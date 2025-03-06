@@ -1,0 +1,140 @@
+import os 
+import numpy as np
+import projectaria_tools.core.mps as mps
+from projectaria_tools.core.mps.utils import filter_points_from_confidence
+import pyvista as pv
+import cv2 as cv
+from projectaria_tools.core import data_provider, calibration
+from projectaria_tools.core.sensor_data import TimeDomain, TimeQueryOptions
+from projectaria_tools.core.stream_id import StreamId
+
+
+def get_points(path):
+    global_points_path = os.path.join(path, 'trajectory', 'semidense_points.csv.gz')
+    points = mps.read_global_point_cloud(global_points_path)
+
+    # filter the point cloud using thresholds on the inverse depth and distance standard deviation
+    inverse_distance_std_threshold = 0.001
+    distance_std_threshold = 0.15
+
+    filtered_points = filter_points_from_confidence(points, inverse_distance_std_threshold, distance_std_threshold)
+
+    # example: get position of this point in the world coordinate frame
+    points = []
+    for point in filtered_points:
+        position_world = point.position_world
+        points.append(position_world)
+    points = np.array(points)
+    return points
+
+def undistort_aria(image_array, provider, sensor_name, size, focal_length):
+    device_calib = provider.get_device_calibration()
+    src_calib = device_calib.get_camera_calib(sensor_name)
+
+    dst_calib = calibration.get_linear_camera_calibration(
+        size, size, focal_length
+    )
+
+    rectified_array = calibration.distort_by_calibration(
+        image_array, dst_calib, src_calib
+    )
+
+    return rectified_array
+
+
+def get_frames(root_path, provider, camera_label, num_frames=200):
+    stream_id = provider.get_stream_id_from_label(camera_label)
+    devignetting_mask_folder_path = os.path.join(root_path, 'aria_devignetting_masks')
+    device_calib = provider.get_device_calibration()
+    device_calib.set_devignetting_mask_folder_path(devignetting_mask_folder_path)
+    devignetting_mask = device_calib.load_devignetting_mask(camera_label)
+
+    src_calib = device_calib.get_camera_calib(camera_label)
+    focal_length = src_calib.get_focal_lengths()[0]
+    size = src_calib.get_image_size()[0]
+
+    frames = []
+    for i in range(num_frames):
+        frame_tuple = provider.get_image_data_by_index(stream_id, i)
+        frame = frame_tuple[0].to_numpy_array()
+
+        # load devignetting_mask by camera label
+        undistorted_frame = undistort_aria(frame, provider, camera_label, size, focal_length)
+
+        # apply devignetting to source image
+        devigneted_image = calibration.devignetting(undistorted_frame, devignetting_mask)
+
+        # rotate the image by 90 degrees
+        frame = np.rot90(devigneted_image, k=3)
+
+        frames.append(frame)
+    devignetting_mask = np.rot90(devignetting_mask, k=3)
+    return frames, devignetting_mask, (focal_length, size / 2)
+
+
+def read_trajectory(path, provider, camera_label, num_frames=200):
+    trajectory = mps.read_closed_loop_trajectory(os.path.join(path, 'trajectory', 'closed_loop_trajectory.csv'))
+    stream_id = provider.get_stream_id_from_label(camera_label)
+    rgb_stream_label = provider.get_label_from_stream_id(stream_id)
+    device_calibration = provider.get_device_calibration()
+    rgb_camera_calibration = device_calibration.get_camera_calib(rgb_stream_label)
+    T_device_rgb_camera = rgb_camera_calibration.get_transform_device_camera()
+
+    timestamps = provider.get_timestamps_ns(stream_id, TimeDomain.DEVICE_TIME)[:num_frames]
+    qvecs = []
+    tvecs = []
+    for query_timestamp in timestamps:
+        pose_info = mps.utils.get_nearest_pose(trajectory, query_timestamp)
+        T_world_device = pose_info.transform_world_device
+        T_world_rgb_camera = T_world_device @ T_device_rgb_camera
+        [qw, qx, qy, qz, tx, ty, tz] = T_world_rgb_camera.to_quat_and_translation()[0]
+        qvecs.append([qw, qx, qy, qz])
+        tvecs.append([tx, ty, tz])
+    qvecs = np.array(qvecs)
+    tvecs = np.array(tvecs)
+    return qvecs, tvecs
+
+
+def main(root_path, seq_name, out_path, target_size=384):
+    os.makedirs(os.path.join(out_path, seq_name), exist_ok=True)
+    os.makedirs(os.path.join(out_path, seq_name, 'frames'), exist_ok=True)
+
+    camera_label = 'camera-rgb'
+    seq_path = os.path.join(root_path, 'takes', seq_name)
+    provider = data_provider.create_vrs_data_provider(os.path.join(seq_path, 'aria01.vrs'))
+
+    points = get_points(seq_path)
+    frames, devignetting_mask, intrs = get_frames(root_path, provider, camera_label)
+    qvecs, tvecs = read_trajectory(seq_path, provider, camera_label)
+    assert len(frames) == len(qvecs) == len(tvecs)
+
+    devignetting_mask = np.stack([devignetting_mask, devignetting_mask, devignetting_mask], axis=2)
+    devignetting_mask = cv.threshold(devignetting_mask, 0, 255, cv.THRESH_BINARY)[1]
+    devignetting_mask = devignetting_mask.astype(np.uint8)
+
+    # resize frames
+    devignetting_mask = cv.resize(devignetting_mask, (target_size, target_size))
+    factor = target_size / frames[0].shape[0]
+    for i, frame in enumerate(frames):
+        frames[i] = cv.resize(frame, (target_size, target_size))
+    intrs = (intrs[0] * factor, intrs[1] * factor)
+    
+    cv.imwrite(os.path.join(out_path, seq_name, 'mask.png'), devignetting_mask)
+    for i, frame in enumerate(frames):
+        cv.imwrite(os.path.join(out_path, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
+    np.save(os.path.join(out_path, seq_name, 'points.npy'), points)
+    with open(os.path.join(out_path, seq_name, 'trajectory.txt'), 'w') as f:
+        f.write(f'QW QX QY QZ TX TY TZ\n')
+        for i in range(len(qvecs)):
+            f.write(f'{qvecs[i][0]} {qvecs[i][1]} {qvecs[i][2]} {qvecs[i][3]} {tvecs[i][0]} {tvecs[i][1]} {tvecs[i][2]}\n')
+    with open(os.path.join(out_path, seq_name, 'intrinsics.txt'), 'w') as f:
+        f.write(f'FX FY CX CY\n')
+        f.write(f'{intrs[0]} {intrs[0]} {intrs[1]} {intrs[1]}\n')
+
+
+
+if __name__ == '__main__':
+    root_path = 'ego_exo_4d'
+    seq_name = 'iiith_cooking_54_4'
+    out_path = 'output'
+    main(root_path, seq_name, out_path)
