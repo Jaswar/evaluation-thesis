@@ -116,15 +116,14 @@ def read_trajectory(path, provider, camera_label, num_frames=200):
     tvecs = np.array(tvecs)
     return qvecs, tvecs
 
-def prepare_aria(root_path, seq_name, out_path, target_size=384):
-    os.makedirs(os.path.join(out_path, seq_name), exist_ok=True)
-    os.makedirs(os.path.join(out_path, seq_name, 'frames'), exist_ok=True)
+def prepare_aria(root_path, seq_name, out_path, camera_label, target_size=384):
+    os.makedirs(os.path.join(out_path, camera_label, seq_name), exist_ok=True)
+    os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
 
     seq_path = os.path.join(root_path, 'takes', seq_name)
     provider = data_provider.create_vrs_data_provider(os.path.join(seq_path, 'aria01.vrs'))
 
     points = get_points(seq_path)
-    camera_label = 'camera_rgb'
     frames, devignetting_mask, intrs = get_frames_aria(root_path, provider, camera_label)
     qvecs, tvecs = read_trajectory(seq_path, provider, camera_label)
     assert len(frames) == len(qvecs) == len(tvecs)
@@ -140,17 +139,17 @@ def prepare_aria(root_path, seq_name, out_path, target_size=384):
         frames[i] = cv.resize(frame, (target_size, target_size))
     intrs = (intrs[0] * factor, intrs[1] * factor)
     
-    cv.imwrite(os.path.join(out_path, seq_name, 'mask.png'), devignetting_mask)
+    cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'mask.png'), devignetting_mask)
     for i, frame in enumerate(frames):
-        cv.imwrite(os.path.join(out_path, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
+        cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
 
-    storePly(os.path.join(out_path, seq_name, 'points.ply'), points)
+    storePly(os.path.join(out_path, camera_label, seq_name, 'points.ply'), points)
 
-    with open(os.path.join(out_path, seq_name, 'trajectory.txt'), 'w') as f:
+    with open(os.path.join(out_path, camera_label, seq_name, 'trajectory.txt'), 'w') as f:
         f.write(f'QW QX QY QZ TX TY TZ\n')
         for i in range(len(qvecs)):
             f.write(f'{qvecs[i][0]} {qvecs[i][1]} {qvecs[i][2]} {qvecs[i][3]} {tvecs[i][0]} {tvecs[i][1]} {tvecs[i][2]}\n')
-    with open(os.path.join(out_path, seq_name, 'intrinsics.txt'), 'w') as f:
+    with open(os.path.join(out_path, camera_label, seq_name, 'intrinsics.txt'), 'w') as f:
         f.write(f'FX FY CX CY\n')
         f.write(f'{intrs[0]} {intrs[0]} {intrs[1]} {intrs[1]}\n')
 
@@ -254,8 +253,8 @@ def get_go_pro_calib(seq_path, camera_label):
 
 
 def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384):
-    os.makedirs(os.path.join(out_path, seq_name, camera_label), exist_ok=True)
-    os.makedirs(os.path.join(out_path, seq_name, camera_label, 'frames'), exist_ok=True)
+    os.makedirs(os.path.join(out_path, camera_label, seq_name), exist_ok=True)
+    os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
 
     seq_path = os.path.join(root_path, 'takes', seq_name)
     frames = get_frames_gopro(seq_path, camera_label)
@@ -278,22 +277,22 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384
     for i, frame in enumerate(frames):
         frames[i] = cv.resize(frame, (target_width, target_height))
     
-    cv.imwrite(os.path.join(out_path, seq_name, camera_label, 'mask.png'), devignetting_mask)
+    cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'mask.png'), devignetting_mask)
     for i, frame in enumerate(frames):
-        cv.imwrite(os.path.join(out_path, seq_name, camera_label, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
+        cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
     
-    with open(os.path.join(out_path, seq_name, camera_label, 'extrinsics.txt'), 'w') as f:
+    with open(os.path.join(out_path, camera_label, seq_name, 'extrinsics.txt'), 'w') as f:
         f.write(f'QW QX QY QZ TX TY TZ\n')
         for _ in range(len(frames)):
             f.write(f'{qvec[0]} {qvec[1]} {qvec[2]} {qvec[3]} {tvec[0]} {tvec[1]} {tvec[2]}\n')
-    with open(os.path.join(out_path, seq_name, camera_label, 'intrinsics.txt'), 'w') as f:
+    with open(os.path.join(out_path, camera_label, seq_name, 'intrinsics.txt'), 'w') as f:
         f.write(f'FX FY CX CY\n')
         f.write(f'{intrs[0]} {intrs[1]} {intrs[2]} {intrs[3]}\n')
 
 
 def main(root_path, seq_name, out_path, camera_label, target_size=384):
-    if camera_label == 'camera_rgb':
-        prepare_aria(root_path, seq_name, out_path, target_size)
+    if camera_label == 'camera-rgb':
+        prepare_aria(root_path, seq_name, out_path, camera_label, target_size)
     else:
         prepare_gopro(root_path, seq_name, out_path, camera_label, target_size)
 
@@ -302,5 +301,7 @@ if __name__ == '__main__':
     root_path = 'ego_exo_4d'
     seq_name = 'iiith_cooking_54_4'
     out_path = 'output'
-    camera_label = 'cam01'  # camxx for GoPro, camera_rgb for Aria
+    camera_label = 'cam01'  # camxx for GoPro, camera-rgb for Aria
+    main(root_path, seq_name, out_path, camera_label)
+    camera_label = 'camera-rgb'  # camxx for GoPro, camera-rgb for Aria
     main(root_path, seq_name, out_path, camera_label)
