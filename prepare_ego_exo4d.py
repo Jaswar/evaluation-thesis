@@ -7,6 +7,7 @@ import cv2 as cv
 from projectaria_tools.core import data_provider, calibration
 from projectaria_tools.core.sensor_data import TimeDomain, TimeQueryOptions
 from projectaria_tools.core.stream_id import StreamId
+from plyfile import PlyData, PlyElement
 
 
 def get_points(path):
@@ -40,6 +41,25 @@ def undistort_aria(image_array, provider, sensor_name, size, focal_length):
     )
 
     return rectified_array
+
+# taken from MonST3R, adapted to no rgb
+def storePly(path, xyz):
+    # Define the dtype for the structured array
+    dtype = [('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
+            ('nx', 'f4'), ('ny', 'f4'), ('nz', 'f4'),
+            ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
+    
+    normals = np.zeros_like(xyz)
+    rgb = np.full((xyz.shape[0], 3), dtype=np.uint8, fill_value=127)
+
+    elements = np.empty(xyz.shape[0], dtype=dtype)
+    attributes = np.concatenate((xyz, normals, rgb), axis=1)
+    elements[:] = list(map(tuple, attributes))
+
+    # Create the PlyData object and write to file
+    vertex_element = PlyElement.describe(elements, 'vertex')
+    ply_data = PlyData([vertex_element])
+    ply_data.write(path)
 
 
 def get_frames(root_path, provider, camera_label, num_frames=200):
@@ -78,6 +98,7 @@ def read_trajectory(path, provider, camera_label, num_frames=200):
     rgb_stream_label = provider.get_label_from_stream_id(stream_id)
     device_calibration = provider.get_device_calibration()
     rgb_camera_calibration = device_calibration.get_camera_calib(rgb_stream_label)
+    rgb_camera_calibration = calibration.rotate_camera_calib_cw90deg(rgb_camera_calibration)
     T_device_rgb_camera = rgb_camera_calibration.get_transform_device_camera()
 
     timestamps = provider.get_timestamps_ns(stream_id, TimeDomain.DEVICE_TIME)[:num_frames]
@@ -122,7 +143,9 @@ def main(root_path, seq_name, out_path, target_size=384):
     cv.imwrite(os.path.join(out_path, seq_name, 'mask.png'), devignetting_mask)
     for i, frame in enumerate(frames):
         cv.imwrite(os.path.join(out_path, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
-    np.save(os.path.join(out_path, seq_name, 'points.npy'), points)
+
+    storePly(os.path.join(out_path, seq_name, 'points.ply'), points)
+
     with open(os.path.join(out_path, seq_name, 'trajectory.txt'), 'w') as f:
         f.write(f'QW QX QY QZ TX TY TZ\n')
         for i in range(len(qvecs)):
