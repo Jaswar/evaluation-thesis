@@ -225,60 +225,101 @@ def get_go_pro_calib(seq_path, camera_label):
             all_calibs[line[0]] = {}
         for i, param in enumerate(line):
             all_calibs[line[0]][lines[0][i]] = param
-    cam_calib = all_calibs[camera_label]
 
-    qvec = [float(cam_calib['qw_world_cam']), 
-            float(cam_calib['qx_world_cam']), 
-            float(cam_calib['qy_world_cam']), 
-            float(cam_calib['qz_world_cam'])]
-    tvec = [float(cam_calib['tx_world_cam']),
-            float(cam_calib['ty_world_cam']),
-            float(cam_calib['tz_world_cam'])]
-    intrinsics = np.array(
-        [
-            [float(cam_calib["intrinsics_0"]), 0, float(cam_calib["intrinsics_2"])],
-            [0, float(cam_calib["intrinsics_1"]), float(cam_calib["intrinsics_3"])],
-            [0, 0, 1],
-        ]
-    )
-    distortion_coeffs = np.array(
-        [
-            float(cam_calib["intrinsics_4"]),
-            float(cam_calib["intrinsics_5"]),
-            float(cam_calib["intrinsics_6"]),
-            float(cam_calib["intrinsics_7"]),
-        ]
-    )
-    return qvec, tvec, intrinsics, distortion_coeffs
+    qvecs = []
+    tvecs = []
+    intrinsics = []
+    distortion_coeffs = []
+    names = []
+    for key, cam_calib in all_calibs.items():
+        qvec = [float(cam_calib['qw_world_cam']), 
+                float(cam_calib['qx_world_cam']), 
+                float(cam_calib['qy_world_cam']), 
+                float(cam_calib['qz_world_cam'])]
+        tvec = [float(cam_calib['tx_world_cam']),
+                float(cam_calib['ty_world_cam']),
+                float(cam_calib['tz_world_cam'])]
+        intrs = np.array(
+            [
+                [float(cam_calib["intrinsics_0"]), 0, float(cam_calib["intrinsics_2"])],
+                [0, float(cam_calib["intrinsics_1"]), float(cam_calib["intrinsics_3"])],
+                [0, 0, 1],
+            ]
+        )
+        distrs = np.array(
+            [
+                float(cam_calib["intrinsics_4"]),
+                float(cam_calib["intrinsics_5"]),
+                float(cam_calib["intrinsics_6"]),
+                float(cam_calib["intrinsics_7"]),
+            ]
+        )
+        names.append(key)
+        qvecs.append(qvec)
+        tvecs.append(tvec)
+        intrinsics.append(intrs)
+        distortion_coeffs.append(distrs)
+    return names, qvecs, tvecs, intrinsics, distortion_coeffs
 
 
 def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384):
+    camera_label = 'gopro'
     os.makedirs(os.path.join(out_path, camera_label, seq_name), exist_ok=True)
     os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
+    os.makedirs(os.path.join(out_path, camera_label, seq_name, 'masks'), exist_ok=True)
 
     seq_path = os.path.join(root_path, 'takes', seq_name)
+    names, qvecs, tvecs, intrs, distortions = get_go_pro_calib(seq_path, camera_label)
     points = get_points(seq_path)
-    frames = get_frames_gopro(seq_path, camera_label)
 
-    qvec, tvec, intrs, distortion = get_go_pro_calib(seq_path, camera_label)
+    all_frames = []
+    for name in names:
+        frames = get_frames_gopro(seq_path, name)
+        all_frames.append(frames)
+    num_cams = len(names)
+    ordering = [i % num_cams for i in range(len(all_frames[0]))]
+    frames = []
+    # this is horribly inefficient, can just do that in the loader
+    for i, cam_inx in enumerate(ordering):
+        frames.append(all_frames[cam_inx][i])
+
     devignetting_mask = np.ones((frames[0].shape[0], frames[0].shape[1], 3), dtype=np.uint8) * 255
-    devignetting_mask, new_intrs = undistort_exocam(devignetting_mask, intrs, distortion, (frames[0].shape[1], frames[0].shape[0]))
+    devignetting_masks = []
+    new_instrinsics = []
+    for i in range(num_cams):
+        dev_mask, new_intrs = undistort_exocam(devignetting_mask, intrs[i], distortions[i], (frames[0].shape[1], frames[0].shape[0]))
+        devignetting_masks.append(dev_mask)
+        new_instrinsics.append(new_intrs)
+
+    masks = []
+    for i, cam_inx in enumerate(ordering):
+        masks.append(devignetting_masks[cam_inx])
+    devignetting_masks = masks
+
     undistored_frames = []
-    for frame in tqdm(frames):
-        undistored_frame, _ = undistort_exocam(frame, intrs, distortion, (frames[0].shape[1], frames[0].shape[0]))
+    for i, frame in tqdm(enumerate(frames)):
+        cam_inx = ordering[i]
+        undistored_frame, _ = undistort_exocam(frame, intrs[cam_inx], distortions[cam_inx], (frames[0].shape[1], frames[0].shape[0]))
         undistored_frames.append(undistored_frame)
     frames = undistored_frames
-    intrs = (new_intrs[0, 0], new_intrs[1, 1], new_intrs[0, 2], new_intrs[1, 2])
+    
+    qvecs = [qvecs[i] for i in ordering]
+    tvecs = [tvecs[i] for i in ordering]
+    intrs = [new_instrinsics[i] for i in ordering]
+    intrs = [[intrs[i][0, 0], intrs[i][1, 1], intrs[i][0, 2], intrs[i][1, 2]] for i in range(len(intrs))]
+    assert len(frames) == len(qvecs) == len(tvecs) == len(intrs) == len(devignetting_masks)
 
     # resize frames
     target_width = int(target_height * frames[0].shape[1] / frames[0].shape[0])
-    intrs = (intrs[0] * target_width / frames[0].shape[1], intrs[1] * target_height / frames[0].shape[0],
-             intrs[2] * target_width / frames[0].shape[1], intrs[3] * target_height / frames[0].shape[0])
-    devignetting_mask = cv.resize(devignetting_mask, (target_width, target_height))
+    intrs = [(intr[0] * target_width / frames[0].shape[1], intr[1] * target_height / frames[0].shape[0],
+             intr[2] * target_width / frames[0].shape[1], intr[3] * target_height / frames[0].shape[0]) for intr in intrs]
+    for i, devignetting_mask in enumerate(devignetting_masks):
+        devignetting_masks[i] = cv.resize(devignetting_mask, (target_width, target_height))
     for i, frame in enumerate(frames):
         frames[i] = cv.resize(frame, (target_width, target_height))
-    
-    cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'mask.png'), devignetting_mask)
+
+    for i, devignetting_mask in enumerate(devignetting_masks):
+        cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'masks', f'{i:05d}.png'), devignetting_mask)
     for i, frame in enumerate(frames):
         cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
     
@@ -286,11 +327,12 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384
     
     with open(os.path.join(out_path, camera_label, seq_name, 'trajectory.txt'), 'w') as f:
         f.write(f'QW QX QY QZ TX TY TZ\n')
-        for _ in range(len(frames)):
+        for (qvec, tvec) in zip(qvecs, tvecs):
             f.write(f'{qvec[0]} {qvec[1]} {qvec[2]} {qvec[3]} {tvec[0]} {tvec[1]} {tvec[2]}\n')
     with open(os.path.join(out_path, camera_label, seq_name, 'intrinsics.txt'), 'w') as f:
         f.write(f'FX FY CX CY\n')
-        f.write(f'{intrs[0]} {intrs[1]} {intrs[2]} {intrs[3]}\n')
+        for intr in intrs:
+            f.write(f'{intr[0]} {intr[1]} {intr[2]} {intr[3]}\n')
 
 
 def main(root_path, seq_name, out_path, camera_label, target_size=384):
@@ -306,5 +348,5 @@ if __name__ == '__main__':
     out_path = 'output'
     camera_label = 'cam01'  # camxx for GoPro, camera-rgb for Aria
     main(root_path, seq_name, out_path, camera_label)
-    camera_label = 'camera-rgb'  # camxx for GoPro, camera-rgb for Aria
-    main(root_path, seq_name, out_path, camera_label)
+    # camera_label = 'camera-rgb'  # camxx for GoPro, camera-rgb for Aria
+    # main(root_path, seq_name, out_path, camera_label)
