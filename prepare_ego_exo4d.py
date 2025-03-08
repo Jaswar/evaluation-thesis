@@ -272,11 +272,11 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384
 
     # resize frames
     target_width = int(target_height * frames[0].shape[1] / frames[0].shape[0])
+    intrs = (intrs[0] * target_width / frames[0].shape[1], intrs[1] * target_height / frames[0].shape[0],
+             intrs[2] * target_width / frames[0].shape[1], intrs[3] * target_height / frames[0].shape[0])
     devignetting_mask = cv.resize(devignetting_mask, (target_width, target_height))
     for i, frame in enumerate(frames):
         frames[i] = cv.resize(frame, (target_width, target_height))
-    intrs = (intrs[0] * target_width / frames[0].shape[1], intrs[1] * target_height / frames[0].shape[0],
-             intrs[2] * target_width / frames[0].shape[1], intrs[3] * target_height / frames[0].shape[0])
     
     cv.imwrite(os.path.join(out_path, seq_name, camera_label, 'mask.png'), devignetting_mask)
     for i, frame in enumerate(frames):
@@ -302,5 +302,5 @@ if __name__ == '__main__':
     root_path = 'ego_exo_4d'
     seq_name = 'iiith_cooking_54_4'
     out_path = 'output'
-    camera_label = 'cam01'
+    camera_label = 'cam01'  # camxx for GoPro, camera_rgb for Aria
     main(root_path, seq_name, out_path, camera_label)
