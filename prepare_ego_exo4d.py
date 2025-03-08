@@ -8,6 +8,7 @@ from projectaria_tools.core import data_provider, calibration
 from projectaria_tools.core.sensor_data import TimeDomain, TimeQueryOptions
 from projectaria_tools.core.stream_id import StreamId
 from plyfile import PlyData, PlyElement
+from tqdm import tqdm
 
 
 def get_points(path):
@@ -62,7 +63,7 @@ def storePly(path, xyz):
     ply_data.write(path)
 
 
-def get_frames(root_path, provider, camera_label, num_frames=200):
+def get_frames_aria(root_path, provider, camera_label, num_frames=200):
     stream_id = provider.get_stream_id_from_label(camera_label)
     devignetting_mask_folder_path = os.path.join(root_path, 'aria_devignetting_masks')
     device_calib = provider.get_device_calibration()
@@ -115,17 +116,16 @@ def read_trajectory(path, provider, camera_label, num_frames=200):
     tvecs = np.array(tvecs)
     return qvecs, tvecs
 
-
-def main(root_path, seq_name, out_path, target_size=384):
+def prepare_aria(root_path, seq_name, out_path, target_size=384):
     os.makedirs(os.path.join(out_path, seq_name), exist_ok=True)
     os.makedirs(os.path.join(out_path, seq_name, 'frames'), exist_ok=True)
 
-    camera_label = 'camera-rgb'
     seq_path = os.path.join(root_path, 'takes', seq_name)
     provider = data_provider.create_vrs_data_provider(os.path.join(seq_path, 'aria01.vrs'))
 
     points = get_points(seq_path)
-    frames, devignetting_mask, intrs = get_frames(root_path, provider, camera_label)
+    camera_label = 'camera_rgb'
+    frames, devignetting_mask, intrs = get_frames_aria(root_path, provider, camera_label)
     qvecs, tvecs = read_trajectory(seq_path, provider, camera_label)
     assert len(frames) == len(qvecs) == len(tvecs)
 
@@ -155,9 +155,152 @@ def main(root_path, seq_name, out_path, target_size=384):
         f.write(f'{intrs[0]} {intrs[0]} {intrs[1]} {intrs[1]}\n')
 
 
+def undistort_exocam(image, intrinsics, distortion_coeffs, dimension=(3840, 2160)):
+    DIM = dimension
+    dim2 = None
+    dim3 = None
+    balance = 0.8
+    # Load the distortion parameters
+    distortion_coeffs = distortion_coeffs
+    # Load the camera intrinsic parameters
+    intrinsics = intrinsics
+
+    dim1 = image.shape[:2][::-1]  # dim1 is the dimension of input image to un-distort
+
+    # Change the calibration dim dynamically (bouldering cam01 and cam04 are verticall for examples)
+    if DIM[0] != dim1[0]:
+        DIM = (DIM[1], DIM[0])
+
+    assert (
+        dim1[0] / dim1[1] == DIM[0] / DIM[1]
+    ), "Image to undistort needs to have same aspect ratio as the ones used in calibration"
+    if not dim2:
+        dim2 = dim1
+    if not dim3:
+        dim3 = dim1
+    scaled_K = (
+        intrinsics * dim1[0] / DIM[0]
+    )  # The values of K is to scale with image dimension.
+    scaled_K[2][2] = 1.0  # Except that K[2][2] is always 1.0
+
+    # This is how scaled_K, dim2 and balance are used to determine the final K used to un-distort image. OpenCV document failed to make this clear!
+    new_K = cv.fisheye.estimateNewCameraMatrixForUndistortRectify(
+        scaled_K, distortion_coeffs, dim2, np.eye(3), balance=balance
+    )
+    map1, map2 = cv.fisheye.initUndistortRectifyMap(
+        scaled_K, distortion_coeffs, np.eye(3), new_K, dim3, cv.CV_16SC2
+    )
+    undistorted_image = cv.remap(
+        image,
+        map1,
+        map2,
+        interpolation=cv.INTER_LINEAR,
+        borderMode=cv.BORDER_CONSTANT,
+    )
+
+    return undistorted_image, new_K
+
+
+def get_frames_gopro(seq_path, camera_label, num_frames=200):
+    video_path = os.path.join(seq_path, 'frame_aligned_videos', camera_label + '.mp4')
+    cap = cv.VideoCapture(video_path)
+    frames = []
+    for i in range(num_frames):
+        ret, frame = cap.read()
+        if not ret:
+            print(f'Error reading frame {i}')
+            break
+        frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        frames.append(frame)
+    cap.release()
+    return frames
+
+
+def get_go_pro_calib(seq_path, camera_label):
+    with open(os.path.join(seq_path, 'trajectory', 'gopro_calibs.csv'), 'r') as f:
+        lines = f.read().split('\n')
+    lines = [line.split(',') for line in lines if line != '']
+    all_calibs = {}
+    for line in lines[1:]:
+        if line[0] not in all_calibs:
+            all_calibs[line[0]] = {}
+        for i, param in enumerate(line):
+            all_calibs[line[0]][lines[0][i]] = param
+    cam_calib = all_calibs[camera_label]
+
+    qvec = [float(cam_calib['qw_world_cam']), 
+            float(cam_calib['qx_world_cam']), 
+            float(cam_calib['qy_world_cam']), 
+            float(cam_calib['qz_world_cam'])]
+    tvec = [float(cam_calib['tx_world_cam']),
+            float(cam_calib['ty_world_cam']),
+            float(cam_calib['tz_world_cam'])]
+    intrinsics = np.array(
+        [
+            [float(cam_calib["intrinsics_0"]), 0, float(cam_calib["intrinsics_2"])],
+            [0, float(cam_calib["intrinsics_1"]), float(cam_calib["intrinsics_3"])],
+            [0, 0, 1],
+        ]
+    )
+    distortion_coeffs = np.array(
+        [
+            float(cam_calib["intrinsics_4"]),
+            float(cam_calib["intrinsics_5"]),
+            float(cam_calib["intrinsics_6"]),
+            float(cam_calib["intrinsics_7"]),
+        ]
+    )
+    return qvec, tvec, intrinsics, distortion_coeffs
+
+
+def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384):
+    os.makedirs(os.path.join(out_path, seq_name, camera_label), exist_ok=True)
+    os.makedirs(os.path.join(out_path, seq_name, camera_label, 'frames'), exist_ok=True)
+
+    seq_path = os.path.join(root_path, 'takes', seq_name)
+    frames = get_frames_gopro(seq_path, camera_label)
+
+    qvec, tvec, intrs, distortion = get_go_pro_calib(seq_path, camera_label)
+    devignetting_mask = np.ones((frames[0].shape[0], frames[0].shape[1], 3), dtype=np.uint8) * 255
+    devignetting_mask, new_intrs = undistort_exocam(devignetting_mask, intrs, distortion, (frames[0].shape[1], frames[0].shape[0]))
+    undistored_frames = []
+    for frame in tqdm(frames):
+        undistored_frame, _ = undistort_exocam(frame, intrs, distortion, (frames[0].shape[1], frames[0].shape[0]))
+        undistored_frames.append(undistored_frame)
+    frames = undistored_frames
+    intrs = (new_intrs[0, 0], new_intrs[1, 1], new_intrs[0, 2], new_intrs[1, 2])
+
+    # resize frames
+    target_width = int(target_height * frames[0].shape[1] / frames[0].shape[0])
+    devignetting_mask = cv.resize(devignetting_mask, (target_width, target_height))
+    for i, frame in enumerate(frames):
+        frames[i] = cv.resize(frame, (target_width, target_height))
+    intrs = (intrs[0] * target_width / frames[0].shape[1], intrs[1] * target_height / frames[0].shape[0],
+             intrs[2] * target_width / frames[0].shape[1], intrs[3] * target_height / frames[0].shape[0])
+    
+    cv.imwrite(os.path.join(out_path, seq_name, camera_label, 'mask.png'), devignetting_mask)
+    for i, frame in enumerate(frames):
+        cv.imwrite(os.path.join(out_path, seq_name, camera_label, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
+    
+    with open(os.path.join(out_path, seq_name, camera_label, 'extrinsics.txt'), 'w') as f:
+        f.write(f'QW QX QY QZ TX TY TZ\n')
+        for _ in range(len(frames)):
+            f.write(f'{qvec[0]} {qvec[1]} {qvec[2]} {qvec[3]} {tvec[0]} {tvec[1]} {tvec[2]}\n')
+    with open(os.path.join(out_path, seq_name, camera_label, 'intrinsics.txt'), 'w') as f:
+        f.write(f'FX FY CX CY\n')
+        f.write(f'{intrs[0]} {intrs[1]} {intrs[2]} {intrs[3]}\n')
+
+
+def main(root_path, seq_name, out_path, camera_label, target_size=384):
+    if camera_label == 'camera_rgb':
+        prepare_aria(root_path, seq_name, out_path, target_size)
+    else:
+        prepare_gopro(root_path, seq_name, out_path, camera_label, target_size)
+
 
 if __name__ == '__main__':
     root_path = 'ego_exo_4d'
     seq_name = 'iiith_cooking_54_4'
     out_path = 'output'
-    main(root_path, seq_name, out_path)
+    camera_label = 'cam01'
+    main(root_path, seq_name, out_path, camera_label)
