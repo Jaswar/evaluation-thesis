@@ -257,6 +257,7 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384
     os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
 
     seq_path = os.path.join(root_path, 'takes', seq_name)
+    points = get_points(seq_path)
     frames = get_frames_gopro(seq_path, camera_label)
 
     qvec, tvec, intrs, distortion = get_go_pro_calib(seq_path, camera_label)
@@ -281,7 +282,9 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384
     for i, frame in enumerate(frames):
         cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
     
-    with open(os.path.join(out_path, camera_label, seq_name, 'extrinsics.txt'), 'w') as f:
+    storePly(os.path.join(out_path, camera_label, seq_name, 'points.ply'), points)
+    
+    with open(os.path.join(out_path, camera_label, seq_name, 'trajectory.txt'), 'w') as f:
         f.write(f'QW QX QY QZ TX TY TZ\n')
         for _ in range(len(frames)):
             f.write(f'{qvec[0]} {qvec[1]} {qvec[2]} {qvec[3]} {tvec[0]} {tvec[1]} {tvec[2]}\n')
