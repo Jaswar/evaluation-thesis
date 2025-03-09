@@ -277,7 +277,7 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384
         frames = get_frames_gopro(seq_path, name)
         all_frames.append(frames)
     num_cams = len(names)
-    ordering = [i % num_cams for i in range(len(all_frames[0]))]
+    ordering = [(i % (num_cams * 2)) // 2 for i in range(len(all_frames[0]))]
     frames = []
     # this is horribly inefficient, can just do that in the loader
     for i, cam_inx in enumerate(ordering):
