@@ -9,6 +9,7 @@ from projectaria_tools.core.sensor_data import TimeDomain, TimeQueryOptions
 from projectaria_tools.core.stream_id import StreamId
 from plyfile import PlyData, PlyElement
 from tqdm import tqdm
+import json
 
 
 def get_points(path):
@@ -63,7 +64,7 @@ def storePly(path, xyz):
     ply_data.write(path)
 
 
-def get_frames_aria(root_path, provider, camera_label, num_frames=200):
+def get_frames_aria(root_path, provider, camera_label, start_frame, end_frame):
     stream_id = provider.get_stream_id_from_label(camera_label)
     devignetting_mask_folder_path = os.path.join(root_path, 'aria_devignetting_masks')
     device_calib = provider.get_device_calibration()
@@ -75,7 +76,7 @@ def get_frames_aria(root_path, provider, camera_label, num_frames=200):
     size = src_calib.get_image_size()[0]
 
     frames = []
-    for i in range(num_frames):
+    for i in range(start_frame, end_frame):
         frame_tuple = provider.get_image_data_by_index(stream_id, i)
         frame = frame_tuple[0].to_numpy_array()
 
@@ -93,7 +94,7 @@ def get_frames_aria(root_path, provider, camera_label, num_frames=200):
     return frames, devignetting_mask, (focal_length, size / 2)
 
 
-def read_trajectory(path, provider, camera_label, num_frames=200):
+def read_trajectory(path, provider, camera_label, start_frame, end_frame):
     trajectory = mps.read_closed_loop_trajectory(os.path.join(path, 'trajectory', 'closed_loop_trajectory.csv'))
     stream_id = provider.get_stream_id_from_label(camera_label)
     rgb_stream_label = provider.get_label_from_stream_id(stream_id)
@@ -102,7 +103,7 @@ def read_trajectory(path, provider, camera_label, num_frames=200):
     rgb_camera_calibration = calibration.rotate_camera_calib_cw90deg(rgb_camera_calibration)
     T_device_rgb_camera = rgb_camera_calibration.get_transform_device_camera()
 
-    timestamps = provider.get_timestamps_ns(stream_id, TimeDomain.DEVICE_TIME)[:num_frames]
+    timestamps = provider.get_timestamps_ns(stream_id, TimeDomain.DEVICE_TIME)[start_frame:end_frame]
     qvecs = []
     tvecs = []
     for query_timestamp in timestamps:
@@ -116,17 +117,18 @@ def read_trajectory(path, provider, camera_label, num_frames=200):
     tvecs = np.array(tvecs)
     return qvecs, tvecs
 
-def prepare_aria(root_path, seq_name, out_path, camera_label, target_size=384):
+def prepare_aria(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_size=384):
     os.makedirs(os.path.join(out_path, camera_label, seq_name), exist_ok=True)
     os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
+    os.makedirs(os.path.join(out_path, camera_label, seq_name, 'masks'), exist_ok=True)
 
     seq_path = os.path.join(root_path, 'takes', seq_name)
     provider = data_provider.create_vrs_data_provider(os.path.join(seq_path, 'aria01.vrs'))
 
     points = get_points(seq_path)
-    frames, devignetting_mask, intrs = get_frames_aria(root_path, provider, camera_label)
-    qvecs, tvecs = read_trajectory(seq_path, provider, camera_label)
-    assert len(frames) == len(qvecs) == len(tvecs)
+    frames, devignetting_mask, intrs = get_frames_aria(root_path, provider, camera_label, start_frame, end_frame)
+    qvecs, tvecs = read_trajectory(seq_path, provider, camera_label, start_frame, end_frame)
+    assert len(frames) == len(qvecs) == len(tvecs) == end_frame - start_frame
 
     devignetting_mask = np.stack([devignetting_mask, devignetting_mask, devignetting_mask], axis=2)
     devignetting_mask = cv.threshold(devignetting_mask, 0, 255, cv.THRESH_BINARY)[1]
@@ -139,7 +141,8 @@ def prepare_aria(root_path, seq_name, out_path, camera_label, target_size=384):
         frames[i] = cv.resize(frame, (target_size, target_size))
     intrs = (intrs[0] * factor, intrs[1] * factor)
     
-    cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'mask.png'), devignetting_mask)
+    for i in range(len(frames)):
+        cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'masks', f'{i:05d}.png'), devignetting_mask)
     for i, frame in enumerate(frames):
         cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
 
@@ -151,7 +154,8 @@ def prepare_aria(root_path, seq_name, out_path, camera_label, target_size=384):
             f.write(f'{qvecs[i][0]} {qvecs[i][1]} {qvecs[i][2]} {qvecs[i][3]} {tvecs[i][0]} {tvecs[i][1]} {tvecs[i][2]}\n')
     with open(os.path.join(out_path, camera_label, seq_name, 'intrinsics.txt'), 'w') as f:
         f.write(f'FX FY CX CY\n')
-        f.write(f'{intrs[0]} {intrs[0]} {intrs[1]} {intrs[1]}\n')
+        for _ in range(len(frames)):
+            f.write(f'{intrs[0]} {intrs[0]} {intrs[1]} {intrs[1]}\n')
 
 
 def undistort_exocam(image, intrinsics, distortion_coeffs, dimension=(3840, 2160)):
@@ -200,15 +204,17 @@ def undistort_exocam(image, intrinsics, distortion_coeffs, dimension=(3840, 2160
     return undistorted_image, new_K
 
 
-def get_frames_gopro(seq_path, camera_label, num_frames=200):
+def get_frames_gopro(seq_path, camera_label, start_frame, end_frame):
     video_path = os.path.join(seq_path, 'frame_aligned_videos', camera_label + '.mp4')
     cap = cv.VideoCapture(video_path)
     frames = []
-    for i in range(num_frames):
+    for i in range(0, end_frame):
         ret, frame = cap.read()
         if not ret:
             print(f'Error reading frame {i}')
             break
+        if i < start_frame:
+            continue
         frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
         frames.append(frame)
     cap.release()
@@ -262,7 +268,7 @@ def get_go_pro_calib(seq_path, camera_label):
     return names, qvecs, tvecs, intrinsics, distortion_coeffs
 
 
-def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384):
+def prepare_gopro(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_height=384):
     camera_label = 'gopro'
     os.makedirs(os.path.join(out_path, camera_label, seq_name), exist_ok=True)
     os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
@@ -274,10 +280,11 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384
 
     all_frames = []
     for name in names:
-        frames = get_frames_gopro(seq_path, name)
+        frames = get_frames_gopro(seq_path, name, start_frame, end_frame)
         all_frames.append(frames)
     num_cams = len(names)
-    ordering = [(i % (num_cams * 2)) // 2 for i in range(len(all_frames[0]))]
+    # ordering = [(i % (num_cams * 2)) // 2 for i in range(len(all_frames[0]))]
+    ordering = np.random.randint(0, num_cams, len(all_frames[0]))
     frames = []
     # this is horribly inefficient, can just do that in the loader
     for i, cam_inx in enumerate(ordering):
@@ -307,7 +314,7 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384
     tvecs = [tvecs[i] for i in ordering]
     intrs = [new_instrinsics[i] for i in ordering]
     intrs = [[intrs[i][0, 0], intrs[i][1, 1], intrs[i][0, 2], intrs[i][1, 2]] for i in range(len(intrs))]
-    assert len(frames) == len(qvecs) == len(tvecs) == len(intrs) == len(devignetting_masks)
+    assert len(frames) == len(qvecs) == len(tvecs) == len(intrs) == len(devignetting_masks) == end_frame - start_frame
 
     # resize frames
     target_width = int(target_height * frames[0].shape[1] / frames[0].shape[0])
@@ -335,18 +342,32 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, target_height=384
             f.write(f'{intr[0]} {intr[1]} {intr[2]} {intr[3]}\n')
 
 
-def main(root_path, seq_name, out_path, camera_label, target_size=384):
+def main(root_path, seq_name, out_path, camera_label, start_time, end_time, target_size=384):
+    provider = data_provider.create_vrs_data_provider(os.path.join(root_path, 'takes', seq_name, 'aria01.vrs'))
+    stream_id = provider.get_stream_id_from_label('camera-rgb')
+    timestamps = provider.get_timestamps_ns(stream_id, TimeDomain.DEVICE_TIME)
+    timestamps = np.array([ts / 1e9 for ts in timestamps]) - timestamps[0] / 1e9
+    start_frame = np.argmax(timestamps > start_time)
+    end_frame = np.argmax(timestamps > end_time) # upper index will be excluded
+    print(f'Processing sequence {seq_name} from frame {start_frame} (included) to {end_frame} (excluded)')
     if camera_label == 'camera-rgb':
-        prepare_aria(root_path, seq_name, out_path, camera_label, target_size)
+        prepare_aria(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_size)
+    elif camera_label == 'gopro':
+        prepare_gopro(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_size)
     else:
-        prepare_gopro(root_path, seq_name, out_path, camera_label, target_size)
-
+        raise ValueError('Unknown camera label')
 
 if __name__ == '__main__':
     root_path = 'ego_exo_4d'
-    seq_name = 'iiith_cooking_54_4'
+    json_file_name = 'settings.json'
     out_path = 'output'
-    camera_label = 'cam01'  # camxx for GoPro, camera-rgb for Aria
-    main(root_path, seq_name, out_path, camera_label)
-    # camera_label = 'camera-rgb'  # camxx for GoPro, camera-rgb for Aria
-    # main(root_path, seq_name, out_path, camera_label)
+    with open(json_file_name, 'r') as f:
+        settings = json.load(f)
+    for seq in settings:
+        seq_name = seq['take_name']
+        start_time = seq['start_time']
+        end_time = seq['end_time']
+        camera_label = 'gopro'  # gopro for GoPro, camera-rgb for Aria
+        main(root_path, seq_name, out_path, camera_label, start_time, end_time)
+        camera_label = 'camera-rgb'  # gopro for GoPro, camera-rgb for Aria
+        main(root_path, seq_name, out_path, camera_label, start_time, end_time)
