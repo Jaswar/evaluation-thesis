@@ -4,6 +4,8 @@ import cv2 as cv
 import json
 
 def psnr(img1, img2, mask):
+    if np.sum(mask) == 0:
+        return None
     img1 = np.reshape(img1, (-1, ))
     img2 = np.reshape(img2, (-1, ))
     mask = np.reshape(mask, (-1, ))
@@ -15,19 +17,83 @@ def psnr(img1, img2, mask):
     return 20 * np.log10(1.0 / np.sqrt(mse))
 
 
-
-def evaluate(source_path, gt_path, renders_path):
-    with open(os.path.join(source_path, 'ordering.txt'), 'r') as f:
-        ordering = f.read().split('\n')
-    ordering = [o for o in ordering if o != '']
+def get_full_masks(source_path, ordering):
     masks = []
     for i, cam_name in enumerate(ordering):
         mask_path = os.path.join(source_path, cam_name, 'masks', f'{i:05d}.png')
         mask = cv.imread(mask_path)
         mask = (mask[:, :, 0] > 0).astype(np.float32)
         masks.append(mask)
-    test_masks = masks[1::2]
+    return masks
+
+def obj_is_dynamic(inx, ranges):
+    for r in ranges:
+        if r[0] <= inx < r[1]:
+            return True
+    return False
+
+
+def combine_dynamic_masks(source_path, ordering):
+    with open(os.path.join(source_path, 'dynamics.json'), 'r') as f:
+        dynamics = json.load(f)
+    masks = []
+    height, width = cv.imread(os.path.join(source_path, ordering[0], 'masks', '00000.png')).shape[:2]
+    for i, cam_name in enumerate(ordering):
+        dynamic_mask = np.zeros((height, width), dtype=np.bool)
+        for obj in dynamics:
+            id_ = obj['id']
+            ranges = obj['ranges']
+            mask_path = os.path.join(source_path, cam_name, 'dynamic_masks', str(id_), f'{i:05d}.png')
+            if obj_is_dynamic(i, ranges) and os.path.exists(mask_path):
+                mask = cv.imread(mask_path)
+                assert mask.shape[0] == height and mask.shape[1] == width, f'Mask shape mismatch: {mask.shape} vs {height}x{width}'
+                mask = mask[:, :, 0] > 0
+                dynamic_mask |= mask
+        masks.append(dynamic_mask)
+    return masks
+
+
+def get_dynamic_masks(source_path, ordering):
+    masks = combine_dynamic_masks(source_path, ordering)
+    combined_masks = []
+    for i, (mask, cam_name) in enumerate(zip(masks, ordering)):
+        cam_mask = cv.imread(os.path.join(source_path, cam_name, 'masks', f'{i:05d}.png'))
+        cam_mask = cam_mask[:, :, 0] > 0
+        combined_mask = np.logical_and(mask, cam_mask)
+        combined_masks.append(combined_mask.astype(np.float32))
+    return combined_masks
+
+def get_static_masks(source_path, ordering):
+    masks = combine_dynamic_masks(source_path, ordering)
+    combined_masks = []
+    for i, (mask, cam_name) in enumerate(zip(masks, ordering)):
+        cam_mask = cv.imread(os.path.join(source_path, cam_name, 'masks', f'{i:05d}.png'))
+        cam_mask = cam_mask[:, :, 0] > 0
+        combined_mask = np.logical_and(1 - mask, cam_mask)
+        combined_masks.append(combined_mask.astype(np.float32))
+    return combined_masks
+
+
+def get_masks(source_path, mask_type='full'):
+    with open(os.path.join(source_path, 'ordering.txt'), 'r') as f:
+        ordering = f.read().split('\n')
+    ordering = [o for o in ordering if o != '']
+
+    if mask_type == 'full':
+        masks = get_full_masks(source_path, ordering)
+    elif mask_type == 'dynamic':
+        masks = get_dynamic_masks(source_path, ordering)
+    elif mask_type == 'static':
+        masks = get_static_masks(source_path, ordering)
+    else:
+        raise ValueError(f'Mask type not supported: {mask_type}')
+    return masks
     
+
+def evaluate(source_path, gt_path, renders_path, mask_type):
+    masks = get_masks(source_path, mask_type)
+    test_masks = masks[1::2]
+
     gts = [cv.imread(os.path.join(gt_path, f)) for f in sorted(os.listdir(gt_path))]
     gts = [gt / 255.0 for gt in gts]
     renders = [cv.imread(os.path.join(renders_path, f)) for f in sorted(os.listdir(renders_path))]
@@ -37,7 +103,8 @@ def evaluate(source_path, gt_path, renders_path):
     psnrs = []
     for i in range(len(test_masks)):
         psnr_ = psnr(gts[i], renders[i], test_masks[i])
-        psnrs.append(psnr_)
+        if psnr_ is not None:
+            psnrs.append(psnr_)
     return np.mean(psnrs)
 
 
@@ -61,6 +128,7 @@ def get_paths_from_model(model, root_path, camera_label, scene):
 
 if __name__ == '__main__':
     models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
+    mask_type = 'static'
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
@@ -71,7 +139,7 @@ if __name__ == '__main__':
             scene = setting['take_name']
             for camera_label in ['camera-rgb', 'gopro']:
                 source_path, gt_path, renders_path = get_paths_from_model(model, root_path, camera_label, scene)
-                mean_psnr = evaluate(source_path, gt_path, renders_path)
+                mean_psnr = evaluate(source_path, gt_path, renders_path, mask_type)
                 print(f'{model} {camera_label} {scene} PSNR: {mean_psnr:.2f}')
             
     
