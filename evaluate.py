@@ -76,7 +76,7 @@ def get_static_masks(source_path, ordering):
     return combined_masks
 
 
-def get_masks(source_path, mask_type='full'):
+def get_masks(source_path, mask_type):
     with open(os.path.join(source_path, 'ordering.txt'), 'r') as f:
         ordering = f.read().split('\n')
     ordering = [o for o in ordering if o != '']
@@ -100,7 +100,7 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
     gts = [gt / 255.0 for gt in gts]
     renders = [cv.imread(os.path.join(renders_path, f)) for f in sorted(os.listdir(renders_path))]
     renders = [render / 255.0 for render in renders]
-    
+
     assert len(test_masks) == len(gts) == len(renders), f'Number of masks, gts and renders do not match: {len(test_masks)}, {len(gts)}, {len(renders)}'
     for (mask, gt, render) in zip(test_masks, gts, renders):
         assert mask.shape[0] == gt.shape[0] == render.shape[0], f'Height mismatch: {mask.shape[0]} vs {gt.shape[0]} vs {render.shape[0]}'
