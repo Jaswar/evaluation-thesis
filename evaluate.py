@@ -17,9 +17,17 @@ def psnr(img1, img2, mask):
 
 
 def evaluate(source_path, gt_path, renders_path):
-    masks = [cv.imread(os.path.join(source_path, 'masks', f)) for f in sorted(os.listdir(os.path.join(source_path, 'masks')))]
-    masks = [(mask[:, :, 0] > 0).astype(np.float32) for mask in masks]
+    with open(os.path.join(source_path, 'ordering.txt'), 'r') as f:
+        ordering = f.read().split('\n')
+    ordering = [o for o in ordering if o != '']
+    masks = []
+    for i, cam_name in enumerate(ordering):
+        mask_path = os.path.join(source_path, cam_name, 'masks', f'{i:05d}.png')
+        mask = cv.imread(mask_path)
+        mask = (mask[:, :, 0] > 0).astype(np.float32)
+        masks.append(mask)
     test_masks = masks[1::2]
+    
     gts = [cv.imread(os.path.join(gt_path, f)) for f in sorted(os.listdir(gt_path))]
     gts = [gt / 255.0 for gt in gts]
     renders = [cv.imread(os.path.join(renders_path, f)) for f in sorted(os.listdir(renders_path))]
@@ -35,15 +43,15 @@ def evaluate(source_path, gt_path, renders_path):
 
 def get_paths_from_model(model, root_path, camera_label, scene):
     if model == '4DGaussians':
-        source_path = os.path.join('output', camera_label, scene)
+        source_path = os.path.join('output/all_saves', camera_label, scene)
         gt_path = os.path.join(root_path, camera_label, scene, 'test/ours_14000/gt')
         renders_path = os.path.join(root_path, camera_label, scene, 'test/ours_14000/renders')
     elif model == 'Deformable-3D-Gaussians':
-        source_path = os.path.join('output', camera_label, scene)
+        source_path = os.path.join('output/all_saves', camera_label, scene)
         gt_path = os.path.join(root_path, camera_label, scene, 'test/ours_40000/gt')
         renders_path = os.path.join(root_path, camera_label, scene, 'test/ours_40000/renders')
     elif model == '4d-gaussian-splatting':
-        source_path = os.path.join('output', camera_label, scene)
+        source_path = os.path.join('output/all_saves', camera_label, scene)
         gt_path = os.path.join(root_path, camera_label, scene, 'test/ours_None/gt')
         renders_path = os.path.join(root_path, camera_label, scene, 'test/ours_None/renders')
     else:
@@ -58,7 +66,7 @@ if __name__ == '__main__':
         settings = json.load(f)
 
     for model in models:
-        root_path = f'../{model}/output/ego_exo'
+        root_path = f'../{model}/output/ego_exo/all_saves'
         for setting in settings:
             scene = setting['take_name']
             for camera_label in ['camera-rgb', 'gopro']:

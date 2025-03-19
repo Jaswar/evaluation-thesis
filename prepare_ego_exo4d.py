@@ -128,8 +128,8 @@ def read_trajectory(path, provider, camera_label, start_frame, end_frame):
 
 def prepare_aria(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_size=384, num_points=10000):
     os.makedirs(os.path.join(out_path, camera_label, seq_name), exist_ok=True)
-    os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
-    os.makedirs(os.path.join(out_path, camera_label, seq_name, 'masks'), exist_ok=True)
+    os.makedirs(os.path.join(out_path, camera_label, seq_name, camera_label, 'frames'), exist_ok=True)
+    os.makedirs(os.path.join(out_path, camera_label, seq_name, camera_label, 'masks'), exist_ok=True)
 
     seq_path = os.path.join(root_path, 'takes', seq_name)
     vrs_name = get_vrs_name(seq_path)
@@ -152,21 +152,24 @@ def prepare_aria(root_path, seq_name, out_path, camera_label, start_frame, end_f
     intrs = (intrs[0] * factor, intrs[1] * factor)
     
     for i in range(len(frames)):
-        cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'masks', f'{i:05d}.png'), devignetting_mask)
+        cv.imwrite(os.path.join(out_path, camera_label, seq_name, camera_label, 'masks', f'{i:05d}.png'), devignetting_mask)
     for i, frame in enumerate(frames):
-        cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
+        cv.imwrite(os.path.join(out_path, camera_label, seq_name, camera_label, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
 
-    storePly(os.path.join(out_path, camera_label, seq_name, 'points.ply'), points)
-
-    with open(os.path.join(out_path, camera_label, seq_name, 'trajectory.txt'), 'w') as f:
+    with open(os.path.join(out_path, camera_label, seq_name, camera_label, 'trajectory.txt'), 'w') as f:
         f.write(f'QW QX QY QZ TX TY TZ\n')
         for i in range(len(qvecs)):
             f.write(f'{qvecs[i][0]} {qvecs[i][1]} {qvecs[i][2]} {qvecs[i][3]} {tvecs[i][0]} {tvecs[i][1]} {tvecs[i][2]}\n')
-    with open(os.path.join(out_path, camera_label, seq_name, 'intrinsics.txt'), 'w') as f:
+    with open(os.path.join(out_path, camera_label, seq_name, camera_label, 'intrinsics.txt'), 'w') as f:
         f.write(f'FX FY CX CY\n')
         for _ in range(len(frames)):
             f.write(f'{intrs[0]} {intrs[0]} {intrs[1]} {intrs[1]}\n')
 
+    storePly(os.path.join(out_path, camera_label, seq_name, 'points.ply'), points)
+
+    with open(os.path.join(out_path, camera_label, seq_name, 'ordering.txt'), 'w') as f:
+        for i in range(len(frames)):
+            f.write(f'{camera_label}\n')
 
 def undistort_exocam(image, intrinsics, distortion_coeffs, dimension=(3840, 2160)):
     DIM = dimension
@@ -362,7 +365,8 @@ if __name__ == '__main__':
         seq_name = seq['take_name']
         start_time = seq['start_time']
         end_time = seq['end_time']
-        camera_label = 'gopro'  # gopro for GoPro, camera-rgb for Aria
-        main(root_path, seq_name, out_path, camera_label, start_time, end_time)
         camera_label = 'camera-rgb'  # gopro for GoPro, camera-rgb for Aria
         main(root_path, seq_name, out_path, camera_label, start_time, end_time)
+        camera_label = 'gopro'  # gopro for GoPro, camera-rgb for Aria
+        main(root_path, seq_name, out_path, camera_label, start_time, end_time)
+        
