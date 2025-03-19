@@ -26,6 +26,7 @@ def get_full_masks(source_path, ordering):
         masks.append(mask)
     return masks
 
+
 def obj_is_dynamic(inx, ranges):
     for r in ranges:
         if r[0] <= inx < r[1]:
@@ -63,6 +64,7 @@ def get_dynamic_masks(source_path, ordering):
         combined_masks.append(combined_mask.astype(np.float32))
     return combined_masks
 
+
 def get_static_masks(source_path, ordering):
     masks = combine_dynamic_masks(source_path, ordering)
     combined_masks = []
@@ -98,7 +100,12 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
     gts = [gt / 255.0 for gt in gts]
     renders = [cv.imread(os.path.join(renders_path, f)) for f in sorted(os.listdir(renders_path))]
     renders = [render / 255.0 for render in renders]
+    
     assert len(test_masks) == len(gts) == len(renders), f'Number of masks, gts and renders do not match: {len(test_masks)}, {len(gts)}, {len(renders)}'
+    for (mask, gt, render) in zip(test_masks, gts, renders):
+        assert mask.shape[0] == gt.shape[0] == render.shape[0], f'Height mismatch: {mask.shape[0]} vs {gt.shape[0]} vs {render.shape[0]}'
+        assert mask.shape[1] == gt.shape[1] == render.shape[1], f'Width mismatch: {mask.shape[1]} vs {gt.shape[1]} vs {render.shape[1]}'
+        assert gt.shape[2] == render.shape[2] == 3, f'Channel mismatch: {gt.shape[2]} vs {render.shape[2]}'
 
     psnrs = []
     for i in range(len(test_masks)):
@@ -128,7 +135,7 @@ def get_paths_from_model(model, root_path, camera_label, scene):
 
 if __name__ == '__main__':
     models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    mask_type = 'static'
+    mask_type = 'dynamic'
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
