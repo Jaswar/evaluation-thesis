@@ -281,75 +281,54 @@ def get_go_pro_calib(seq_path, camera_label):
 def prepare_gopro(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_height=384, num_points=10000):
     camera_label = 'gopro'
     os.makedirs(os.path.join(out_path, camera_label, seq_name), exist_ok=True)
-    os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
-    os.makedirs(os.path.join(out_path, camera_label, seq_name, 'masks'), exist_ok=True)
 
     seq_path = os.path.join(root_path, 'takes', seq_name)
     names, qvecs, tvecs, intrs, distortions = get_go_pro_calib(seq_path, camera_label)
     points = get_points(seq_path, num_points)
 
-    all_frames = []
-    for name in names:
+    for (name, qvec, tvec, intr, dists) in zip(names, qvecs, tvecs, intrs, distortions):
+        os.makedirs(os.path.join(out_path, camera_label, seq_name, name), exist_ok=True)
+        os.makedirs(os.path.join(out_path, camera_label, seq_name, name, 'frames'), exist_ok=True)
+        os.makedirs(os.path.join(out_path, camera_label, seq_name, name, 'masks'), exist_ok=True)
         frames = get_frames_gopro(seq_path, name, start_frame, end_frame)
-        all_frames.append(frames)
-    num_cams = len(names)
-    # ordering = [(i % (num_cams * 2)) // 2 for i in range(len(all_frames[0]))]
-    ordering = np.random.randint(0, num_cams, len(all_frames[0]))
-    frames = []
-    # this is horribly inefficient, can just do that in the loader
-    for i, cam_inx in enumerate(ordering):
-        frames.append(all_frames[cam_inx][i])
 
-    devignetting_mask = np.ones((frames[0].shape[0], frames[0].shape[1], 3), dtype=np.uint8) * 255
-    devignetting_masks = []
-    new_instrinsics = []
-    for i in range(num_cams):
-        dev_mask, new_intrs = undistort_exocam(devignetting_mask, intrs[i], distortions[i], (frames[0].shape[1], frames[0].shape[0]))
-        devignetting_masks.append(dev_mask)
-        new_instrinsics.append(new_intrs)
+        devignetting_mask = np.ones((frames[0].shape[0], frames[0].shape[1], 3), dtype=np.uint8) * 255
+        devignetting_mask, new_intrs = undistort_exocam(devignetting_mask, intr, dists, (frames[0].shape[1], frames[0].shape[0]))
 
-    masks = []
-    for i, cam_inx in enumerate(ordering):
-        masks.append(devignetting_masks[cam_inx])
-    devignetting_masks = masks
+        undistored_frames = []
+        for i, frame in tqdm(enumerate(frames)):
+            undistored_frame, _ = undistort_exocam(frame, intr, dists, (frames[0].shape[1], frames[0].shape[0]))
+            undistored_frames.append(undistored_frame)
+        
+        new_intrs = [new_intrs[0, 0], new_intrs[1, 1], new_intrs[0, 2], new_intrs[1, 2]]
 
-    undistored_frames = []
-    for i, frame in tqdm(enumerate(frames)):
-        cam_inx = ordering[i]
-        undistored_frame, _ = undistort_exocam(frame, intrs[cam_inx], distortions[cam_inx], (frames[0].shape[1], frames[0].shape[0]))
-        undistored_frames.append(undistored_frame)
-    frames = undistored_frames
-    
-    qvecs = [qvecs[i] for i in ordering]
-    tvecs = [tvecs[i] for i in ordering]
-    intrs = [new_instrinsics[i] for i in ordering]
-    intrs = [[intrs[i][0, 0], intrs[i][1, 1], intrs[i][0, 2], intrs[i][1, 2]] for i in range(len(intrs))]
-    assert len(frames) == len(qvecs) == len(tvecs) == len(intrs) == len(devignetting_masks) == end_frame - start_frame
+        target_width = int(target_height * frames[0].shape[1] / frames[0].shape[0])
+        new_intrs = (new_intrs[0] * target_width / frames[0].shape[1], new_intrs[1] * target_height / frames[0].shape[0],
+                new_intrs[2] * target_width / frames[0].shape[1], new_intrs[3] * target_height / frames[0].shape[0])
+        devignetting_mask = cv.resize(devignetting_mask, (target_width, target_height))
+        for i, frame in enumerate(undistored_frames):
+            undistored_frames[i] = cv.resize(frame, (target_width, target_height))
 
-    # resize frames
-    target_width = int(target_height * frames[0].shape[1] / frames[0].shape[0])
-    intrs = [(intr[0] * target_width / frames[0].shape[1], intr[1] * target_height / frames[0].shape[0],
-             intr[2] * target_width / frames[0].shape[1], intr[3] * target_height / frames[0].shape[0]) for intr in intrs]
-    for i, devignetting_mask in enumerate(devignetting_masks):
-        devignetting_masks[i] = cv.resize(devignetting_mask, (target_width, target_height))
-    for i, frame in enumerate(frames):
-        frames[i] = cv.resize(frame, (target_width, target_height))
+        for i, frame in enumerate(undistored_frames):
+            cv.imwrite(os.path.join(out_path, camera_label, seq_name, name, 'masks', f'{i:05d}.png'), devignetting_mask)
+            cv.imwrite(os.path.join(out_path, camera_label, seq_name, name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
 
-    for i, devignetting_mask in enumerate(devignetting_masks):
-        cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'masks', f'{i:05d}.png'), devignetting_mask)
-    for i, frame in enumerate(frames):
-        cv.imwrite(os.path.join(out_path, camera_label, seq_name, 'frames', f'{i:05d}.png'), cv.cvtColor(frame, cv.COLOR_RGB2BGR))
-    
+        with open(os.path.join(out_path, camera_label, seq_name, name, 'trajectory.txt'), 'w') as f:
+            f.write(f'QW QX QY QZ TX TY TZ\n')
+            for _ in range(len(frames)):
+                f.write(f'{qvec[0]} {qvec[1]} {qvec[2]} {qvec[3]} {tvec[0]} {tvec[1]} {tvec[2]}\n')
+        with open(os.path.join(out_path, camera_label, seq_name, name, 'intrinsics.txt'), 'w') as f:
+            f.write(f'FX FY CX CY\n')
+            for _ in range(len(frames)):
+                f.write(f'{new_intrs[0]} {new_intrs[1]} {new_intrs[2]} {new_intrs[3]}\n')
+
     storePly(os.path.join(out_path, camera_label, seq_name, 'points.ply'), points)
-    
-    with open(os.path.join(out_path, camera_label, seq_name, 'trajectory.txt'), 'w') as f:
-        f.write(f'QW QX QY QZ TX TY TZ\n')
-        for (qvec, tvec) in zip(qvecs, tvecs):
-            f.write(f'{qvec[0]} {qvec[1]} {qvec[2]} {qvec[3]} {tvec[0]} {tvec[1]} {tvec[2]}\n')
-    with open(os.path.join(out_path, camera_label, seq_name, 'intrinsics.txt'), 'w') as f:
-        f.write(f'FX FY CX CY\n')
-        for intr in intrs:
-            f.write(f'{intr[0]} {intr[1]} {intr[2]} {intr[3]}\n')
+
+    # ordering = [(i % (num_cams * 2)) // 2 for i in range(len(all_frames[0]))]
+    ordering = np.random.randint(0, len(names), end_frame - start_frame)
+    with open(os.path.join(out_path, camera_label, seq_name, 'ordering.txt'), 'w') as f:
+        for i in ordering:
+            f.write(f'{names[i]}\n')
 
 
 def main(root_path, seq_name, out_path, camera_label, start_time, end_time, target_size=384):
@@ -374,7 +353,7 @@ def main(root_path, seq_name, out_path, camera_label, start_time, end_time, targ
 if __name__ == '__main__':
     root_path = 'ego_exo_4d'
     json_file_name = 'settings.json'
-    out_path = 'output'
+    out_path = 'output/all_saves'
     with open(json_file_name, 'r') as f:
         settings = json.load(f)
     for seq in settings:
