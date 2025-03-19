@@ -10,9 +10,16 @@ from projectaria_tools.core.stream_id import StreamId
 from plyfile import PlyData, PlyElement
 from tqdm import tqdm
 import json
+import random
 
 
-def get_points(path):
+def get_vrs_name(path):
+    for file in os.listdir(path):
+        if file.endswith('.vrs') and 'noimagestreams' not in file:
+            return file
+    raise ValueError('No .vrs file found')
+
+def get_points(path, num_points):
     global_points_path = os.path.join(path, 'trajectory', 'semidense_points.csv.gz')
     points = mps.read_global_point_cloud(global_points_path)
 
@@ -27,6 +34,8 @@ def get_points(path):
     for point in filtered_points:
         position_world = point.position_world
         points.append(position_world)
+    if len(points) > num_points:
+        points = random.sample(points, num_points)
     points = np.array(points)
     return points
 
@@ -117,15 +126,16 @@ def read_trajectory(path, provider, camera_label, start_frame, end_frame):
     tvecs = np.array(tvecs)
     return qvecs, tvecs
 
-def prepare_aria(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_size=384):
+def prepare_aria(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_size=384, num_points=10000):
     os.makedirs(os.path.join(out_path, camera_label, seq_name), exist_ok=True)
     os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
     os.makedirs(os.path.join(out_path, camera_label, seq_name, 'masks'), exist_ok=True)
 
     seq_path = os.path.join(root_path, 'takes', seq_name)
-    provider = data_provider.create_vrs_data_provider(os.path.join(seq_path, 'aria01.vrs'))
+    vrs_name = get_vrs_name(seq_path)
+    provider = data_provider.create_vrs_data_provider(os.path.join(seq_path, vrs_name))
 
-    points = get_points(seq_path)
+    points = get_points(seq_path, num_points)
     frames, devignetting_mask, intrs = get_frames_aria(root_path, provider, camera_label, start_frame, end_frame)
     qvecs, tvecs = read_trajectory(seq_path, provider, camera_label, start_frame, end_frame)
     assert len(frames) == len(qvecs) == len(tvecs) == end_frame - start_frame
@@ -268,7 +278,7 @@ def get_go_pro_calib(seq_path, camera_label):
     return names, qvecs, tvecs, intrinsics, distortion_coeffs
 
 
-def prepare_gopro(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_height=384):
+def prepare_gopro(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_height=384, num_points=10000):
     camera_label = 'gopro'
     os.makedirs(os.path.join(out_path, camera_label, seq_name), exist_ok=True)
     os.makedirs(os.path.join(out_path, camera_label, seq_name, 'frames'), exist_ok=True)
@@ -276,7 +286,7 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, start_frame, end_
 
     seq_path = os.path.join(root_path, 'takes', seq_name)
     names, qvecs, tvecs, intrs, distortions = get_go_pro_calib(seq_path, camera_label)
-    points = get_points(seq_path)
+    points = get_points(seq_path, num_points)
 
     all_frames = []
     for name in names:
@@ -343,13 +353,17 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, start_frame, end_
 
 
 def main(root_path, seq_name, out_path, camera_label, start_time, end_time, target_size=384):
-    provider = data_provider.create_vrs_data_provider(os.path.join(root_path, 'takes', seq_name, 'aria01.vrs'))
+    seq_path = os.path.join(root_path, 'takes', seq_name)
+    vrs_name = get_vrs_name(seq_path)
+    provider = data_provider.create_vrs_data_provider(os.path.join(seq_path, vrs_name))
+
     stream_id = provider.get_stream_id_from_label('camera-rgb')
     timestamps = provider.get_timestamps_ns(stream_id, TimeDomain.DEVICE_TIME)
     timestamps = np.array([ts / 1e9 for ts in timestamps]) - timestamps[0] / 1e9
     start_frame = np.argmax(timestamps > start_time)
     end_frame = np.argmax(timestamps > end_time) # upper index will be excluded
     print(f'Processing sequence {seq_name} from frame {start_frame} (included) to {end_frame} (excluded)')
+    
     if camera_label == 'camera-rgb':
         prepare_aria(root_path, seq_name, out_path, camera_label, start_frame, end_frame, target_size)
     elif camera_label == 'gopro':
@@ -364,6 +378,8 @@ if __name__ == '__main__':
     with open(json_file_name, 'r') as f:
         settings = json.load(f)
     for seq in settings:
+        np.random.seed(42)
+        random.seed(42)
         seq_name = seq['take_name']
         start_time = seq['start_time']
         end_time = seq['end_time']
