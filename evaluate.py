@@ -94,7 +94,7 @@ def get_masks(source_path, mask_type):
 
 def evaluate(source_path, gt_path, renders_path, mask_type):
     masks = get_masks(source_path, mask_type)
-    test_masks = masks[1::2]
+    test_masks = masks[3::4]
 
     gts = [cv.imread(os.path.join(gt_path, f)) for f in sorted(os.listdir(gt_path))]
     gts = [gt / 255.0 for gt in gts]
@@ -141,8 +141,8 @@ if __name__ == '__main__':
         settings = json.load(f)
 
     for model in models:
-        root_path = f'../{model}/output/ego_exo/all_saves'
-        for setting in settings:
+        root_path = f'../{model}/output/ego_exo/with_val_set'
+        for setting in settings[::-1]:
             scene = setting['take_name']
             for camera_label in ['camera-rgb', 'gopro']:
                 source_path, gt_path, renders_path = get_paths_from_model(model, root_path, camera_label, scene)
