@@ -2,3 +2,4 @@ venv
 output
 ego_exo_4d
 ego_exo.zip
+__pycache__
