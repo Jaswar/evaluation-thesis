@@ -7,11 +7,24 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from math import exp
 from torch import Tensor
+from lpips import LPIPS
 
 # Copyright 2020 by Gongfan Fang, Zhejiang University.
 # All rights reserved.
 import warnings
 from typing import List, Optional, Tuple, Union
+
+
+lpips_fn = LPIPS(net='vgg', spatial=True).cuda()
+def lpips(img1, img2, mask):
+    if np.sum(mask) == 0:
+        return None
+    img1 = torch.tensor(img1).permute(2, 0, 1).unsqueeze(0).float().cuda()
+    img2 = torch.tensor(img2).permute(2, 0, 1).unsqueeze(0).float().cuda()
+    mask = torch.tensor(mask).unsqueeze(0).unsqueeze(0).float().cuda()
+    _lpips = lpips_fn(img1 * 2 - 1, img2 * 2 - 1)
+    _lpips = _lpips[mask == 1].mean()
+    return _lpips.cpu().item()
 
 
 def _fspecial_gauss_1d(size: int, sigma: float) -> Tensor:
@@ -300,7 +313,7 @@ def get_masks(source_path, mask_type):
 
 def evaluate(source_path, gt_path, renders_path, mask_type):
     if not os.path.exists(gt_path) or not os.path.exists(renders_path):
-        return 0, 0
+        return 0, 0, 0
 
     masks = get_masks(source_path, mask_type)
     test_masks = masks[3::4]
@@ -318,14 +331,18 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
 
     psnrs = []
     ssims = []
+    lpipss = []
     for i in range(len(test_masks)):
         psnr_ = psnr(gts[i], renders[i], test_masks[i])
         ssim_ = ssim(gts[i], renders[i], test_masks[i])
+        lpips_ = lpips(gts[i], renders[i], test_masks[i])
         if psnr_ is not None:
             psnrs.append(psnr_)
         if ssim_ is not None:
             ssims.append(ssim_)
-    return np.mean(psnrs), np.mean(ssims)
+        if lpips_ is not None:
+            lpipss.append(lpips_)
+    return np.mean(psnrs), np.mean(ssims), np.mean(lpipss)
 
 
 def get_paths_from_model(model, root_path, camera_label, scene):
@@ -352,7 +369,7 @@ def get_paths_from_model(model, root_path, camera_label, scene):
 
 if __name__ == '__main__':
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    mask_type = 'static'
+    mask_type = 'full'
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
@@ -363,7 +380,7 @@ if __name__ == '__main__':
             scene = setting['take_name']
             for camera_label in ['camera-rgb', 'gopro'] if model != 'EgoGaussian' else ['camera-rgb']:
                 source_path, gt_path, renders_path = get_paths_from_model(model, root_path, camera_label, scene)
-                mean_psnr, mean_ssim = evaluate(source_path, gt_path, renders_path, mask_type)
-                print(f'{model} {camera_label} {scene} PSNR: {mean_psnr:.2f} SSIM: {mean_ssim:.5f}')
+                mean_psnr, mean_ssim, mean_lpips = evaluate(source_path, gt_path, renders_path, mask_type)
+                print(f'{model} {camera_label} {scene} PSNR: {mean_psnr:.2f} SSIM: {mean_ssim:.5f} LPIPS: {mean_lpips:.5f}')
             
     
