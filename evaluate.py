@@ -93,6 +93,9 @@ def get_masks(source_path, mask_type):
     
 
 def evaluate(source_path, gt_path, renders_path, mask_type):
+    if not os.path.exists(gt_path) or not os.path.exists(renders_path):
+        return 0
+
     masks = get_masks(source_path, mask_type)
     test_masks = masks[3::4]
 
@@ -128,14 +131,18 @@ def get_paths_from_model(model, root_path, camera_label, scene):
         source_path = os.path.join('output/all_saves', camera_label, scene)
         gt_path = os.path.join(root_path, camera_label, scene, 'test/ours_None/gt')
         renders_path = os.path.join(root_path, camera_label, scene, 'test/ours_None/renders')
+    elif model == 'EgoGaussian':
+        source_path = os.path.join('output/all_saves', camera_label, scene)
+        gt_path = os.path.join('../EgoGaussian/output/HOI4D', scene, 'full/evaluation/all/gt')
+        renders_path = os.path.join('../EgoGaussian/output/HOI4D', scene, 'full/evaluation/all/render')
     else:
         raise ValueError(f'Model not supported: {model}')
     return source_path, gt_path, renders_path
 
 
 if __name__ == '__main__':
-    models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    mask_type = 'dynamic'
+    models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
+    mask_type = 'full'
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
@@ -144,7 +151,7 @@ if __name__ == '__main__':
         root_path = f'../{model}/output/ego_exo/with_val_set'
         for setting in settings[::-1]:
             scene = setting['take_name']
-            for camera_label in ['camera-rgb', 'gopro']:
+            for camera_label in ['camera-rgb', 'gopro'] if model != 'EgoGaussian' else ['camera-rgb']:
                 source_path, gt_path, renders_path = get_paths_from_model(model, root_path, camera_label, scene)
                 mean_psnr = evaluate(source_path, gt_path, renders_path, mask_type)
                 print(f'{model} {camera_label} {scene} PSNR: {mean_psnr:.2f}')

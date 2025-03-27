@@ -58,7 +58,7 @@ def convIntrinsicsAndExtrinsics(ego_exo_path, output_path):
         qvec = rotmat2qvec(R)
         tvec = T
 
-        filename = f'frame_{i:05d}.png'
+        filename = f'{i:05d}.png'
         image = Image(id=i+1, qvec=qvec, tvec=tvec, camera_id=id_name_mapping[order], name=filename, xys=[], point3D_ids=[])
         colmap_images[i+1] = image
     write_extrinsics_binary(colmap_images, os.path.join(output_path, 'sparse/0/images.bin'))
@@ -80,7 +80,7 @@ def moveMasks(ego_exo_path, output_path):
         person_mask = cv.imread(os.path.join(ego_exo_path, 'camera-rgb/dynamic_masks/0', person_mask_path))
         camera_mask = cv.imread(os.path.join(ego_exo_path, 'camera-rgb/masks', camera_mask_path))
         hand_mask = cv.bitwise_or(person_mask, ~camera_mask)
-        hand_mask_path = os.path.join(output_path, 'hand_masks', f'frame_{i:05d}.png')
+        hand_mask_path = os.path.join(output_path, 'hand_masks', f'{i:05d}.png')
         cv.imwrite(hand_mask_path, hand_mask)
     obj_masks = sorted(os.listdir(os.path.join(ego_exo_path, 'camera-rgb/dynamic_masks/1')))
     for obj_mask_path in obj_masks:
@@ -142,7 +142,7 @@ def conv2EgoGaussian(ego_exo_path, output_path):
 
 if __name__ == '__main__':
     ego_exo_path = 'output/all_saves/camera-rgb/iiith_cooking_111_2'
-    output_path = 'output/eg_format/camera-rgb/iiith_cooking_111_2'
+    output_path = 'output/HOI4D/iiith_cooking_111_2'
     conv2EgoGaussian(ego_exo_path, output_path)
 
 
