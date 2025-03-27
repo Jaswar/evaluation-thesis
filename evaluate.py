@@ -313,7 +313,7 @@ def get_masks(source_path, mask_type):
 
 def evaluate(source_path, gt_path, renders_path, mask_type):
     if not os.path.exists(gt_path) or not os.path.exists(renders_path):
-        return 0, 0, 0
+        return None, None, None
 
     masks = get_masks(source_path, mask_type)
     test_masks = masks[3::4]
@@ -369,18 +369,46 @@ def get_paths_from_model(model, root_path, camera_label, scene):
 
 if __name__ == '__main__':
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    mask_type = 'full'
+    mask_type = 'static'
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
 
+    results = {}
     for model in models:
+        if model not in results:
+            results[model] = {}
         root_path = f'../{model}/output/ego_exo/with_val_set'
         for setting in settings[::-1]:
             scene = setting['take_name']
+            if scene not in results[model]:
+                results[model][scene] = {}
             for camera_label in ['camera-rgb', 'gopro'] if model != 'EgoGaussian' else ['camera-rgb']:
+                if camera_label not in results[model][scene]:
+                    results[model][scene][camera_label] = {}
                 source_path, gt_path, renders_path = get_paths_from_model(model, root_path, camera_label, scene)
                 mean_psnr, mean_ssim, mean_lpips = evaluate(source_path, gt_path, renders_path, mask_type)
-                print(f'{model} {camera_label} {scene} PSNR: {mean_psnr:.2f} SSIM: {mean_ssim:.5f} LPIPS: {mean_lpips:.5f}')
-            
+                print(f'{model} {camera_label} {scene} PSNR: {mean_psnr} SSIM: {mean_ssim} LPIPS: {mean_lpips}')
+                results[model][scene][camera_label] = {'psnr': mean_psnr, 'ssim': mean_ssim, 'lpips': mean_lpips}
+    print()
+    
+    mean_over_scenes = {}
+    for model in results:
+        mean_over_scenes[model] = {}
+        for scene in results[model]:
+            for camera_label in results[model][scene]:
+                if camera_label not in mean_over_scenes[model]:
+                    mean_over_scenes[model][camera_label] = {}
+                for metric in results[model][scene][camera_label]:
+                    if metric not in mean_over_scenes[model][camera_label]:
+                        mean_over_scenes[model][camera_label][metric] = []
+                    if results[model][scene][camera_label][metric] is not None:
+                        mean_over_scenes[model][camera_label][metric].append(results[model][scene][camera_label][metric])
+        for camera_label in mean_over_scenes[model]:
+            for metric in mean_over_scenes[model][camera_label]:
+                mean_over_scenes[model][camera_label][metric] = np.mean(mean_over_scenes[model][camera_label][metric])
+
+    for model in mean_over_scenes:
+        for camera_label in mean_over_scenes[model]:
+            print(f'{model} {camera_label} PSNR: {mean_over_scenes[model][camera_label]["psnr"]:.2f} SSIM: {mean_over_scenes[model][camera_label]["ssim"]:.2f} LPIPS: {mean_over_scenes[model][camera_label]["lpips"]:.2f}')
     
