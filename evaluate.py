@@ -414,9 +414,7 @@ if __name__ == '__main__':
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
-    settings = filter_based_on_data_type(settings, data_type)
-    mask_type = get_mask_type_based_on_data_type(mask_type, data_type)
-    print(f'Using mask type: {mask_type}')
+    settings = filter_based_on_data_type(settings, data_type)    
 
     results = {}
     for model in models:
@@ -431,6 +429,9 @@ if __name__ == '__main__':
                 if camera_label not in results[model][scene]:
                     results[model][scene][camera_label] = {}
                 source_path, gt_path, renders_path = get_paths_from_model(model, root_path, camera_label, scene)
+                if camera_label == 'camera-rgb':
+                    mask_type = get_mask_type_based_on_data_type(mask_type, data_type)
+                    print(f'Using mask type: {mask_type}')
                 mean_psnr, mean_ssim, mean_lpips = evaluate(source_path, gt_path, renders_path, mask_type)
                 print(f'{model} {camera_label} {scene} PSNR: {mean_psnr} SSIM: {mean_ssim} LPIPS: {mean_lpips}')
                 results[model][scene][camera_label] = {'psnr': mean_psnr, 'ssim': mean_ssim, 'lpips': mean_lpips}
