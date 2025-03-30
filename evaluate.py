@@ -253,7 +253,7 @@ def obj_is_dynamic(inx, ranges):
     return False
 
 
-def combine_dynamic_masks(source_path, ordering):
+def combine_dynamic_masks(source_path, ordering, skip_ids):
     with open(os.path.join(source_path, 'dynamics.json'), 'r') as f:
         dynamics = json.load(f)
     masks = []
@@ -262,6 +262,8 @@ def combine_dynamic_masks(source_path, ordering):
         dynamic_mask = np.zeros((height, width), dtype=np.bool)
         for obj in dynamics:
             id_ = obj['id']
+            if id_ in skip_ids:
+                continue
             ranges = obj['ranges']
             mask_path = os.path.join(source_path, cam_name, 'dynamic_masks', str(id_), f'{i:05d}.png')
             if obj_is_dynamic(i, ranges) and os.path.exists(mask_path):
@@ -273,8 +275,10 @@ def combine_dynamic_masks(source_path, ordering):
     return masks
 
 
-def get_dynamic_masks(source_path, ordering):
-    masks = combine_dynamic_masks(source_path, ordering)
+def get_dynamic_masks(source_path, ordering, skip_ids=None):
+    if skip_ids is None:
+        skip_ids = []
+    masks = combine_dynamic_masks(source_path, ordering, skip_ids)
     combined_masks = []
     for i, (mask, cam_name) in enumerate(zip(masks, ordering)):
         cam_mask = cv.imread(os.path.join(source_path, cam_name, 'masks', f'{i:05d}.png'))
@@ -285,7 +289,7 @@ def get_dynamic_masks(source_path, ordering):
 
 
 def get_static_masks(source_path, ordering):
-    masks = combine_dynamic_masks(source_path, ordering)
+    masks = combine_dynamic_masks(source_path, ordering, skip_ids=[])
     combined_masks = []
     for i, (mask, cam_name) in enumerate(zip(masks, ordering)):
         cam_mask = cv.imread(os.path.join(source_path, cam_name, 'masks', f'{i:05d}.png'))
@@ -293,6 +297,19 @@ def get_static_masks(source_path, ordering):
         combined_mask = np.logical_and(1 - mask, cam_mask)
         combined_masks.append(combined_mask.astype(np.float32))
     return combined_masks
+
+
+def get_full_masks_no_hand(source_path, ordering):
+    masks = []
+    for i, cam_name in enumerate(ordering):
+        mask_path = os.path.join(source_path, cam_name, 'masks', f'{i:05d}.png')
+        hand_mask_path = os.path.join(source_path, cam_name, 'dynamic_masks/0', f'{i:05d}.png')
+        mask = cv.imread(mask_path)
+        hand_mask = cv.imread(hand_mask_path)
+        mask = (mask[:, :, 0] > 0)
+        hand_mask = ~(hand_mask[:, :, 0] > 0)
+        masks.append((mask & hand_mask).astype(np.float32))
+    return masks
 
 
 def get_masks(source_path, mask_type):
@@ -306,6 +323,10 @@ def get_masks(source_path, mask_type):
         masks = get_dynamic_masks(source_path, ordering)
     elif mask_type == 'static':
         masks = get_static_masks(source_path, ordering)
+    elif mask_type == 'full_no_hand':
+        masks = get_full_masks_no_hand(source_path, ordering)
+    elif mask_type == 'dynamic_no_hand':
+        masks = get_dynamic_masks(source_path, ordering, skip_ids=[0])
     else:
         raise ValueError(f'Mask type not supported: {mask_type}')
     return masks
@@ -367,12 +388,35 @@ def get_paths_from_model(model, root_path, camera_label, scene):
     return source_path, gt_path, renders_path
 
 
+def filter_based_on_data_type(settings, data_type):
+    filtered_settings = []
+    for setting in settings:
+        if data_type == 'non_eg' and setting['take_name'] != 'iiith_cooking_111_2':
+            filtered_settings.append(setting)
+        elif data_type == 'eg' and setting['take_name'] == 'iiith_cooking_111_2':
+            filtered_settings.append(setting)
+    return filtered_settings
+
+
+def get_mask_type_based_on_data_type(mask_type, data_type):
+    if data_type != 'eg':
+        return mask_type
+    if mask_type == 'full':
+        return 'full_no_hand'
+    elif mask_type == 'dynamic':
+        return 'dynamic_no_hand'
+    return mask_type
+
 if __name__ == '__main__':
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    mask_type = 'static'
+    mask_type = 'dynamic'
+    data_type = 'eg'  # 'eg' or 'non_eg'
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
+    settings = filter_based_on_data_type(settings, data_type)
+    mask_type = get_mask_type_based_on_data_type(mask_type, data_type)
+    print(f'Using mask type: {mask_type}')
 
     results = {}
     for model in models:
