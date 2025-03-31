@@ -400,7 +400,7 @@ def get_mask_type_based_on_data_type(mask_type, data_type):
 
 if __name__ == '__main__':
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    mask_type = 'dynamic'
+    mask_type = 'full'
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
@@ -441,9 +441,30 @@ if __name__ == '__main__':
                         mean_over_scenes[model][camera_label][metric].append(results[model][scene][camera_label][metric])
         for camera_label in mean_over_scenes[model]:
             for metric in mean_over_scenes[model][camera_label]:
-                mean_over_scenes[model][camera_label][metric] = np.mean(mean_over_scenes[model][camera_label][metric])
+                mean = np.mean(mean_over_scenes[model][camera_label][metric])
+                std = np.std(mean_over_scenes[model][camera_label][metric])
+                mean_over_scenes[model][camera_label][metric] = [mean, std]
 
+    # for model in mean_over_scenes:
+    #     for camera_label in mean_over_scenes[model]:
+    #         print(f'{model} {camera_label} PSNR: {mean_over_scenes[model][camera_label]["psnr"]:.2f} SSIM: {mean_over_scenes[model][camera_label]["ssim"]:.2f} LPIPS: {mean_over_scenes[model][camera_label]["lpips"]:.2f}')
+    model_mapping = {
+        'EgoGaussian': 'EgoGaussian',
+        'Deformable-3D-Gaussians': 'Def3DGS',
+        '4DGaussians': '4DGS',
+        '4d-gaussian-splatting': 'RTGS',
+    }
+    camera_mapping = {
+        'camera-rgb': 'Ego',
+        'gopro': 'Exo',
+    }
+    result = ''
     for model in mean_over_scenes:
+        result += f'{model_mapping[model]} '
         for camera_label in mean_over_scenes[model]:
-            print(f'{model} {camera_label} PSNR: {mean_over_scenes[model][camera_label]["psnr"]:.2f} SSIM: {mean_over_scenes[model][camera_label]["ssim"]:.2f} LPIPS: {mean_over_scenes[model][camera_label]["lpips"]:.2f}')
-    
+            result += f'& {camera_mapping[camera_label]} '
+            for metric in mean_over_scenes[model][camera_label]:
+                mean, std = mean_over_scenes[model][camera_label][metric]
+                result += f'& {mean:.2f} '
+            result += '\\\\\n'
+    print(result)
