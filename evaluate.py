@@ -388,16 +388,6 @@ def get_paths_from_model(model, root_path, camera_label, scene):
     return source_path, gt_path, renders_path
 
 
-def filter_based_on_data_type(settings, data_type):
-    filtered_settings = []
-    for setting in settings:
-        if data_type == 'non_eg' and setting['take_name'] != 'iiith_cooking_111_2':
-            filtered_settings.append(setting)
-        elif data_type == 'eg' and setting['take_name'] == 'iiith_cooking_111_2':
-            filtered_settings.append(setting)
-    return filtered_settings
-
-
 def get_mask_type_based_on_data_type(mask_type, data_type):
     if data_type != 'eg':
         return mask_type
@@ -407,14 +397,13 @@ def get_mask_type_based_on_data_type(mask_type, data_type):
         return 'dynamic_no_hand'
     return mask_type
 
+
 if __name__ == '__main__':
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
     mask_type = 'dynamic'
-    data_type = 'eg'  # 'eg' or 'non_eg'
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
-    settings = filter_based_on_data_type(settings, data_type)    
 
     results = {}
     for model in models:
@@ -423,16 +412,17 @@ if __name__ == '__main__':
         root_path = f'../{model}/output/ego_exo/with_val_set'
         for setting in settings[::-1]:
             scene = setting['take_name']
+            scene_type = setting['type']
             if scene not in results[model]:
                 results[model][scene] = {}
             for camera_label in ['camera-rgb', 'gopro'] if model != 'EgoGaussian' else ['camera-rgb']:
                 if camera_label not in results[model][scene]:
                     results[model][scene][camera_label] = {}
                 source_path, gt_path, renders_path = get_paths_from_model(model, root_path, camera_label, scene)
+                task_specific_mask = mask_type
                 if camera_label == 'camera-rgb':
-                    mask_type = get_mask_type_based_on_data_type(mask_type, data_type)
-                    print(f'Using mask type: {mask_type}')
-                mean_psnr, mean_ssim, mean_lpips = evaluate(source_path, gt_path, renders_path, mask_type)
+                    task_specific_mask = get_mask_type_based_on_data_type(task_specific_mask, scene_type)
+                mean_psnr, mean_ssim, mean_lpips = evaluate(source_path, gt_path, renders_path, task_specific_mask)
                 print(f'{model} {camera_label} {scene} PSNR: {mean_psnr} SSIM: {mean_ssim} LPIPS: {mean_lpips}')
                 results[model][scene][camera_label] = {'psnr': mean_psnr, 'ssim': mean_ssim, 'lpips': mean_lpips}
     print()
