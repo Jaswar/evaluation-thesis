@@ -141,8 +141,8 @@ def conv2EgoGaussian(ego_exo_path, output_path):
     createSplits(ego_exo_path, output_path)
 
 if __name__ == '__main__':
-    ego_exo_path = 'output/all_saves/camera-rgb/iiith_cooking_111_2'
-    output_path = 'output/HOI4D/iiith_cooking_111_2'
+    ego_exo_path = 'output/all_saves/camera-rgb/georgiatech_cooking_08_02_4'
+    output_path = 'output/HOI4D/georgiatech_cooking_08_02_4'
     conv2EgoGaussian(ego_exo_path, output_path)
 
 

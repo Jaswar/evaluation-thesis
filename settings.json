@@ -43,5 +43,10 @@
         "take_name": "indiana_bike_02_3",
         "start_time": 139.1854609530407,
         "end_time": 149.1854609530407
+    },
+    {
+        "take_name": "georgiatech_cooking_08_02_4",
+        "start_time": 383.0,
+        "end_time": 393.0
     }
 ]
