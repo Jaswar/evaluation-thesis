@@ -369,8 +369,9 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
 def get_paths_from_model(model, root_path, camera_label, scene):
     if model == '4DGaussians':
         source_path = os.path.join('output/all_saves', camera_label, scene)
-        gt_path = os.path.join(root_path, camera_label, scene, 'test/ours_14000/gt')
-        renders_path = os.path.join(root_path, camera_label, scene, 'test/ours_14000/renders')
+        iteration = [d for d in os.listdir(os.path.join(root_path, camera_label, scene, 'test')) if d.startswith('ours_')][0]
+        gt_path = os.path.join(root_path, camera_label, scene, f'test/{iteration}/gt')
+        renders_path = os.path.join(root_path, camera_label, scene, f'test/{iteration}/renders')
     elif model == 'Deformable-3D-Gaussians':
         source_path = os.path.join('output/all_saves', camera_label, scene)
         gt_path = os.path.join(root_path, camera_label, scene, 'test/ours_40000/gt')
@@ -399,17 +400,20 @@ def get_mask_type_based_on_data_type(mask_type, data_type):
 
 
 if __name__ == '__main__':
-    models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    mask_type = 'full'
+    models = ['4DGaussians']
+    mask_type = 'static'
+    selected_scenes = 'eg'  # eg or non_eg
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
+    settings = [setting for setting in settings if setting['type'] == selected_scenes]
 
     results = {}
     for model in models:
         if model not in results:
             results[model] = {}
-        root_path = f'../{model}/output/ego_exo/with_val_set'
+        # root_path = f'../{model}/output/ego_exo/with_val_set'
+        root_path = f'random_search_output/{model}'
         for setting in settings[::-1]:
             scene = setting['take_name']
             scene_type = setting['type']
