@@ -366,20 +366,21 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
     return np.mean(psnrs), np.mean(ssims), np.mean(lpipss)
 
 
-def get_paths_from_model(model, root_path, camera_label, scene):
+def get_paths_from_model(model, root_path, camera_label, scene, repetition):
     if model == '4DGaussians':
         source_path = os.path.join('output/all_saves', camera_label, scene)
-        iteration = [d for d in os.listdir(os.path.join(root_path, camera_label, scene, 'test')) if d.startswith('ours_')][0]
-        gt_path = os.path.join(root_path, camera_label, scene, f'test/{iteration}/gt')
-        renders_path = os.path.join(root_path, camera_label, scene, f'test/{iteration}/renders')
+        iteration = [d for d in os.listdir(os.path.join(root_path, camera_label, scene, repetition, 'test')) if d.startswith('ours_')][0]
+        gt_path = os.path.join(root_path, camera_label, scene, f'{repetition}/test/{iteration}/gt')
+        renders_path = os.path.join(root_path, camera_label, scene, f'{repetition}/test/{iteration}/renders')
     elif model == 'Deformable-3D-Gaussians':
         source_path = os.path.join('output/all_saves', camera_label, scene)
         gt_path = os.path.join(root_path, camera_label, scene, 'test/ours_40000/gt')
         renders_path = os.path.join(root_path, camera_label, scene, 'test/ours_40000/renders')
     elif model == '4d-gaussian-splatting':
         source_path = os.path.join('output/all_saves', camera_label, scene)
-        gt_path = os.path.join(root_path, camera_label, scene, 'test/ours_None/gt')
-        renders_path = os.path.join(root_path, camera_label, scene, 'test/ours_None/renders')
+        inner_path = os.listdir(os.path.join(root_path, camera_label, scene, repetition))[0]
+        gt_path = os.path.join(root_path, camera_label, scene, repetition, inner_path, 'test/ours_None/gt')
+        renders_path = os.path.join(root_path, camera_label, scene, repetition, inner_path, 'test/ours_None/renders')
     elif model == 'EgoGaussian':
         source_path = os.path.join('output/all_saves', camera_label, scene)
         gt_path = os.path.join('../EgoGaussian/output/HOI4D', scene, 'full/evaluation/all/gt')
@@ -400,58 +401,62 @@ def get_mask_type_based_on_data_type(mask_type, data_type):
 
 
 if __name__ == '__main__':
-    models = ['4DGaussians']
-    mask_type = 'static'
-    selected_scenes = 'eg'  # eg or non_eg
+    models = ['4DGaussians', '4d-gaussian-splatting']
+    mask_type = 'dynamic'
+    selected_scenes = 'non_eg'  # eg or non_eg
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
     settings = [setting for setting in settings if setting['type'] == selected_scenes]
 
-    results = {}
-    for model in models:
-        if model not in results:
-            results[model] = {}
-        # root_path = f'../{model}/output/ego_exo/with_val_set'
-        root_path = f'random_search_output/{model}'
-        for setting in settings[::-1]:
-            scene = setting['take_name']
-            scene_type = setting['type']
-            if scene not in results[model]:
-                results[model][scene] = {}
-            for camera_label in ['camera-rgb', 'gopro'] if model != 'EgoGaussian' else ['camera-rgb']:
-                if camera_label not in results[model][scene]:
-                    results[model][scene][camera_label] = {}
-                source_path, gt_path, renders_path = get_paths_from_model(model, root_path, camera_label, scene)
-                task_specific_mask = mask_type
-                if camera_label == 'camera-rgb':
-                    task_specific_mask = get_mask_type_based_on_data_type(task_specific_mask, scene_type)
-                mean_psnr, mean_ssim, mean_lpips = evaluate(source_path, gt_path, renders_path, task_specific_mask)
-                print(f'{model} {camera_label} {scene} PSNR: {mean_psnr} SSIM: {mean_ssim} LPIPS: {mean_lpips}')
-                results[model][scene][camera_label] = {'psnr': mean_psnr, 'ssim': mean_ssim, 'lpips': mean_lpips}
-    print()
-    
-    mean_over_scenes = {}
-    for model in results:
-        mean_over_scenes[model] = {}
-        for scene in results[model]:
-            for camera_label in results[model][scene]:
-                if camera_label not in mean_over_scenes[model]:
-                    mean_over_scenes[model][camera_label] = {}
-                for metric in results[model][scene][camera_label]:
-                    if metric not in mean_over_scenes[model][camera_label]:
-                        mean_over_scenes[model][camera_label][metric] = []
-                    if results[model][scene][camera_label][metric] is not None:
-                        mean_over_scenes[model][camera_label][metric].append(results[model][scene][camera_label][metric])
-        for camera_label in mean_over_scenes[model]:
-            for metric in mean_over_scenes[model][camera_label]:
-                mean = np.mean(mean_over_scenes[model][camera_label][metric])
-                std = np.std(mean_over_scenes[model][camera_label][metric])
-                mean_over_scenes[model][camera_label][metric] = [mean, std]
+    results_over_repetitions = {}
+    for repetition in ['0', '1', '2']:
+        results = {}
+        for model in models:
+            if model not in results:
+                results[model] = {}
+            # root_path = f'../{model}/output/ego_exo/with_val_set'
+            root_path = f'retrain_output/{model}/retrain/ego_exo/random_search'
+            for setting in settings[::-1]:
+                scene = setting['take_name']
+                scene_type = setting['type']
+                if scene not in results[model]:
+                    results[model][scene] = {}
+                for camera_label in ['camera-rgb', 'gopro'] if model != 'EgoGaussian' else ['camera-rgb']:
+                    if camera_label not in results[model][scene]:
+                        results[model][scene][camera_label] = {}
+                    source_path, gt_path, renders_path = get_paths_from_model(model, root_path, camera_label, scene, repetition)
+                    task_specific_mask = mask_type
+                    if camera_label == 'camera-rgb':
+                        task_specific_mask = get_mask_type_based_on_data_type(task_specific_mask, scene_type)
+                    mean_psnr, mean_ssim, mean_lpips = evaluate(source_path, gt_path, renders_path, task_specific_mask)
+                    print(f'{model} {camera_label} {scene} {repetition} PSNR: {mean_psnr} SSIM: {mean_ssim} LPIPS: {mean_lpips}')
+                    results[model][scene][camera_label] = {'psnr': mean_psnr, 'ssim': mean_ssim, 'lpips': mean_lpips}
+        print()
 
-    # for model in mean_over_scenes:
-    #     for camera_label in mean_over_scenes[model]:
-    #         print(f'{model} {camera_label} PSNR: {mean_over_scenes[model][camera_label]["psnr"]:.2f} SSIM: {mean_over_scenes[model][camera_label]["ssim"]:.2f} LPIPS: {mean_over_scenes[model][camera_label]["lpips"]:.2f}')
+        mean_over_scenes = {}
+        for model in results:
+            mean_over_scenes[model] = {}
+            for scene in results[model]:
+                for camera_label in results[model][scene]:
+                    if camera_label not in mean_over_scenes[model]:
+                        mean_over_scenes[model][camera_label] = {}
+                    for metric in results[model][scene][camera_label]:
+                        if metric not in mean_over_scenes[model][camera_label]:
+                            mean_over_scenes[model][camera_label][metric] = []
+                        if results[model][scene][camera_label][metric] is not None:
+                            mean_over_scenes[model][camera_label][metric].append(results[model][scene][camera_label][metric])
+            for camera_label in mean_over_scenes[model]:
+                for metric in mean_over_scenes[model][camera_label]:
+                    mean = np.mean(mean_over_scenes[model][camera_label][metric])
+                    if model not in results_over_repetitions:
+                        results_over_repetitions[model] = {}
+                    if camera_label not in results_over_repetitions[model]:
+                        results_over_repetitions[model][camera_label] = {}
+                    if metric not in results_over_repetitions[model][camera_label]:
+                        results_over_repetitions[model][camera_label][metric] = []
+                    results_over_repetitions[model][camera_label][metric].append(mean)
+                    
     model_mapping = {
         'EgoGaussian': 'EgoGaussian',
         'Deformable-3D-Gaussians': 'Def3DGS',
@@ -463,12 +468,17 @@ if __name__ == '__main__':
         'gopro': 'Exo',
     }
     result = ''
-    for model in mean_over_scenes:
+    for model in results_over_repetitions:
         result += f'{model_mapping[model]} '
-        for camera_label in mean_over_scenes[model]:
+        for camera_label in results_over_repetitions[model]:
             result += f'& {camera_mapping[camera_label]} '
-            for metric in mean_over_scenes[model][camera_label]:
-                mean, std = mean_over_scenes[model][camera_label][metric]
-                result += f'& {mean:.2f} '
+            for metric in results_over_repetitions[model][camera_label]:
+                res = results_over_repetitions[model][camera_label][metric]
+                mean = np.mean(res)
+                std = np.std(res)
+                if metric == 'psnr':
+                    result += f'& {mean:.2f} $\\pm$ {std:.2f} '
+                else:
+                    result += f'& {mean:.2f} $\\pm$ {std:.3f} '  # higher resolution std
             result += '\\\\\n'
     print(result)
