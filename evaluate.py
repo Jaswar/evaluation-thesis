@@ -350,6 +350,13 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
         assert mask.shape[1] == gt.shape[1] == render.shape[1], f'Width mismatch: {mask.shape[1]} vs {gt.shape[1]} vs {render.shape[1]}'
         assert gt.shape[2] == render.shape[2] == 3, f'Channel mismatch: {gt.shape[2]} vs {render.shape[2]}'
 
+    # for (gt, render, mask) in zip(gts, renders, test_masks):
+    #     cv.imshow('gt', gt)
+    #     cv.imshow('render', render)
+    #     cv.imshow('mask', mask)
+    #     cv.waitKey(0)
+    # cv.destroyAllWindows()
+
     psnrs = []
     ssims = []
     lpipss = []
@@ -374,8 +381,9 @@ def get_paths_from_model(model, root_path, camera_label, scene, repetition):
         renders_path = os.path.join(root_path, camera_label, scene, f'{repetition}/test/{iteration}/renders')
     elif model == 'Deformable-3D-Gaussians':
         source_path = os.path.join('output/all_saves', camera_label, scene)
-        gt_path = os.path.join(root_path, camera_label, scene, 'test/ours_40000/gt')
-        renders_path = os.path.join(root_path, camera_label, scene, 'test/ours_40000/renders')
+        iteration = [d for d in os.listdir(os.path.join(root_path, camera_label, scene, repetition, 'test')) if d.startswith('ours_')][0]
+        gt_path = os.path.join(root_path, camera_label, scene, repetition, f'test/{iteration}/gt')
+        renders_path = os.path.join(root_path, camera_label, scene, repetition, f'test/{iteration}/renders')
     elif model == '4d-gaussian-splatting':
         source_path = os.path.join('output/all_saves', camera_label, scene)
         inner_path = os.listdir(os.path.join(root_path, camera_label, scene, repetition))[0]
@@ -383,8 +391,8 @@ def get_paths_from_model(model, root_path, camera_label, scene, repetition):
         renders_path = os.path.join(root_path, camera_label, scene, repetition, inner_path, 'test/ours_None/renders')
     elif model == 'EgoGaussian':
         source_path = os.path.join('output/all_saves', camera_label, scene)
-        gt_path = os.path.join('../EgoGaussian/output/HOI4D', scene, 'full/evaluation/all/gt')
-        renders_path = os.path.join('../EgoGaussian/output/HOI4D', scene, 'full/evaluation/all/render')
+        gt_path = os.path.join('../EgoGaussian/output/HOI4D', f'{scene}_{repetition}', 'full/evaluation/all/gt')
+        renders_path = os.path.join('../EgoGaussian/output/HOI4D', f'{scene}_{repetition}', 'full/evaluation/all/render')
     else:
         raise ValueError(f'Model not supported: {model}')
     return source_path, gt_path, renders_path
@@ -401,7 +409,7 @@ def get_mask_type_based_on_data_type(mask_type, data_type):
 
 
 if __name__ == '__main__':
-    models = ['4DGaussians', '4d-gaussian-splatting']
+    models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
     mask_type = 'dynamic'
     selected_scenes = 'non_eg'  # eg or non_eg
 
@@ -410,6 +418,7 @@ if __name__ == '__main__':
     settings = [setting for setting in settings if setting['type'] == selected_scenes]
 
     results_over_repetitions = {}
+    total_counts = {}
     for repetition in ['0', '1', '2']:
         results = {}
         for model in models:
@@ -434,6 +443,20 @@ if __name__ == '__main__':
                     results[model][scene][camera_label] = {'psnr': mean_psnr, 'ssim': mean_ssim, 'lpips': mean_lpips}
         print()
 
+        for model in models:
+            if model == 'EgoGaussian':
+                continue
+            if model not in total_counts:
+                total_counts[model] = {}
+            for scene in results[model]:
+                for metric in ['psnr', 'ssim', 'lpips']:
+                    if metric not in total_counts[model]:
+                        total_counts[model][metric] = 0
+                    if metric != 'lpips' and results[model][scene]['gopro'][metric] > results[model][scene]['camera-rgb'][metric]:
+                        total_counts[model][metric] += 1
+                    elif metric == 'lpips' and results[model][scene]['gopro'][metric] < results[model][scene]['camera-rgb'][metric]:
+                        total_counts[model][metric] += 1
+
         mean_over_scenes = {}
         for model in results:
             mean_over_scenes[model] = {}
@@ -456,7 +479,7 @@ if __name__ == '__main__':
                     if metric not in results_over_repetitions[model][camera_label]:
                         results_over_repetitions[model][camera_label][metric] = []
                     results_over_repetitions[model][camera_label][metric].append(mean)
-                    
+    print(total_counts)
     model_mapping = {
         'EgoGaussian': 'EgoGaussian',
         'Deformable-3D-Gaussians': 'Def3DGS',
@@ -482,3 +505,5 @@ if __name__ == '__main__':
                     result += f'& {mean:.2f} $\\pm$ {std:.3f} '  # higher resolution std
             result += '\\\\\n'
     print(result)
+
+    result = ''
