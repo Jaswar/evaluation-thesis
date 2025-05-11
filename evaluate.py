@@ -410,8 +410,8 @@ def get_mask_type_based_on_data_type(mask_type, data_type):
 
 if __name__ == '__main__':
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    mask_type = 'dynamic'
-    selected_scenes = 'non_eg'  # eg or non_eg
+    mask_type = 'static'
+    selected_scenes = 'eg'  # eg or non_eg
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
