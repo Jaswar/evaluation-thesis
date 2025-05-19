@@ -100,14 +100,26 @@ def get_paths_from_model(model, root_path, camera_label, scene, repetition):
 
 
 if __name__ == '__main__':
+    # models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
+    # scene = 'unc_basketball_03-31-23_01_17'
+    # repetition = 0
+    # frame_idx = 1
     models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    scene = 'unc_basketball_03-31-23_01_17'
+    scene = 'minnesota_rockclimbing_013_2'
     repetition = 0
     frame_idx = 1
+    # models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
+    # scene = 'iiith_cooking_58_2'
+    # repetition = 0
+    # frame_idx = 1
+    # models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
+    # scene = 'uniandes_basketball_003_43'
+    # repetition = 0
+    # frame_idx = 12
     # models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
     # scene = 'iiith_cooking_111_2'
     # repetition = 0
-    # frame_idx = 0
+    # frame_idx = 17
     out_path = 'vis_output'
 
     with open('settings.json', 'r') as f:
