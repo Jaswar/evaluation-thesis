@@ -1,0 +1,96 @@
+import os
+import json
+import numpy as np
+
+from common import get_masks, psnr, ssim, lpips, get_paths_from_model, get_mask_type_based_on_data_type
+
+import matplotlib.pyplot as plt
+import cv2 as cv
+import scipy
+
+def evaluate(source_path, gt_path, renders_path, mask_type):
+    if not os.path.exists(gt_path) or not os.path.exists(renders_path):
+        return None, None, None
+
+    masks = get_masks(source_path, mask_type)
+    test_masks = masks[3::4]
+
+    gts = [cv.imread(os.path.join(gt_path, f)) for f in sorted(os.listdir(gt_path))]
+    gts = [gt / 255.0 for gt in gts]
+    renders = [cv.imread(os.path.join(renders_path, f)) for f in sorted(os.listdir(renders_path))]
+    renders = [render / 255.0 for render in renders]
+
+    assert len(test_masks) == len(gts) == len(renders), f'Number of masks, gts and renders do not match: {len(test_masks)}, {len(gts)}, {len(renders)}'
+    for (mask, gt, render) in zip(test_masks, gts, renders):
+        assert mask.shape[0] == gt.shape[0] == render.shape[0], f'Height mismatch: {mask.shape[0]} vs {gt.shape[0]} vs {render.shape[0]}'
+        assert mask.shape[1] == gt.shape[1] == render.shape[1], f'Width mismatch: {mask.shape[1]} vs {gt.shape[1]} vs {render.shape[1]}'
+        assert gt.shape[2] == render.shape[2] == 3, f'Channel mismatch: {gt.shape[2]} vs {render.shape[2]}'
+
+    blur_scores = []
+    for gt, mask in zip(gts, test_masks):
+        gt = (gt * 255).clip(0, 255).astype(np.uint8)
+        gray = cv.cvtColor(gt, cv.COLOR_BGR2GRAY)
+        laplacian = cv.Laplacian(gray, cv.CV_64F)
+        blur_score = laplacian[mask == 1].var()
+        blur_scores.append(blur_score)
+    
+    psnrs = []
+    ssims = []
+    lpipss = []
+    for i in range(len(test_masks)):
+        psnr_ = psnr(gts[i], renders[i], test_masks[i])
+        ssim_ = ssim(gts[i], renders[i], test_masks[i])
+        lpips_ = lpips(gts[i], renders[i], test_masks[i])
+        if psnr_ is not None:
+            psnrs.append(psnr_)
+        if ssim_ is not None:
+            ssims.append(ssim_)
+        if lpips_ is not None:
+            lpipss.append(lpips_)
+    return psnrs, ssims, lpipss, blur_scores
+
+
+def normalize(arr, make_log=True):
+    if make_log:
+        arr = np.log(arr)
+    return (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
+
+def main():
+    # models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
+    models = ['Deformable-3D-Gaussians']
+
+    with open('settings.json', 'r') as f:
+        settings = json.load(f)
+
+    for model in models:
+        all_blurs = []
+        all_psnrs = []
+        for repetition in ['0']:# ['0', '1', '2']:
+            root_path = f'retrain_output/{model}/retrain/ego_exo/random_search'
+            for setting in settings[::-1]:
+                scene = setting['take_name']
+                print(f'Processing {repetition=}, {model=}, {scene=}')
+                scene_type = setting['type']
+                if model == 'EgoGaussian' and scene_type == 'non_eg':
+                    continue
+                source_path, gt_path, renders_path = get_paths_from_model(model, root_path, 'camera-rgb', scene, repetition)
+                task_specific_mask = get_mask_type_based_on_data_type('static', scene_type)
+
+                psnrs, ssims, lpipss, blur_scores = evaluate(source_path, gt_path, renders_path, task_specific_mask)
+                psnrs = normalize(psnrs, make_log=False)
+                blur_scores = normalize(blur_scores, make_log=False)
+                plt.plot(psnrs, label='PSNR')
+                plt.plot(blur_scores, label='Blur')
+                plt.legend()
+                plt.show()
+                all_blurs.extend(blur_scores)
+                all_psnrs.extend(psnrs)
+    #     plt.scatter(all_blurs, all_psnrs, label=model)
+    # plt.legend()
+    # plt.xlabel('Blurriness')
+    # plt.ylabel('PSNR')
+    # plt.show()
+                
+
+if __name__ == '__main__':
+    main()

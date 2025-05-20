@@ -133,7 +133,7 @@ def main():
                 rv = np.max(rv, axis=1)
                 tv = np.max(tv, axis=1)
                 psnrs, ssims, lpipss = evaluate(source_path, gt_path, renders_path, task_specific_mask)
-                psnrs = normalize(lpipss, make_log=False)
+                psnrs = normalize(psnrs, make_log=False)
                 # rv = rv[2::4]
                 # tv = tv[2::4]
                 # plt.plot(tv, label='v')
