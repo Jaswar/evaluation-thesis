@@ -4,9 +4,11 @@ import numpy as np
 
 from common import get_masks, psnr, ssim, lpips, get_paths_from_model, get_mask_type_based_on_data_type
 
+import matplotlib
 import matplotlib.pyplot as plt
 import cv2 as cv
 import scipy
+
 
 # from https://mariogc.com/post/angular-velocity-quaternions/#example
 def angular_velocity(q1, q2, dt=1/30.):
@@ -101,15 +103,21 @@ def normalize(arr, make_log=True):
 
 def main():
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
+    model_mapping = {
+        'EgoGaussian': 'EgoGaussian',
+        'Deformable-3D-Gaussians': 'Def3DGS',
+        '4DGaussians': '4DGS',
+        '4d-gaussian-splatting': 'RTGS',
+    }
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
 
-    
+    plt.rcParams.update({'font.size': 22})
     for model in models:
         rvs = []
         tvs = []
-        all_psnrs = []
+        all_lpipss = []
         for repetition in ['0', '1', '2']:
             root_path = f'retrain_output/{model}/retrain/ego_exo/random_search'
             for setting in settings[::-1]:
@@ -122,7 +130,7 @@ def main():
                 task_specific_mask = get_mask_type_based_on_data_type('static', scene_type)
 
                 qs, ts = get_extr(source_path)  
-                rv = get_velocities(qs, linear=False)[2::4]
+                rv = get_velocities(qs, linear=False)[2::4]  # start at 2, because v_2 represents the velocity between frames 2 and 3
                 rv = np.abs(rv)
                 rv = normalize(rv)
                 tv = get_velocities(ts, linear=True)[2::4]
@@ -133,7 +141,7 @@ def main():
                 rv = np.max(rv, axis=1)
                 tv = np.max(tv, axis=1)
                 psnrs, ssims, lpipss = evaluate(source_path, gt_path, renders_path, task_specific_mask)
-                psnrs = normalize(psnrs, make_log=False)
+                lpipss = normalize(lpipss, make_log=False)
                 # rv = rv[2::4]
                 # tv = tv[2::4]
                 # plt.plot(tv, label='v')
@@ -143,35 +151,21 @@ def main():
                 #plt.scatter(tv, psnrs, label=scene)
                 rvs.extend(rv)
                 tvs.extend(tv)
-                all_psnrs.extend(psnrs)
+                all_lpipss.extend(lpipss)
         rvs = np.array(rvs)
         tvs = np.array(tvs)
-        all_psnrs = np.array(all_psnrs)
-        plt.scatter(tvs, all_psnrs, label=model)
-    plt.plot([np.min(tvs) - 0.03, 1.0], [1.0, 0.0], 'k--')
+        all_lpipss = np.array(all_lpipss)
+        # np.shuffle(all_lpipss)
+        print(f'Spearman statistics for translation: {scipy.stats.spearmanr(tvs, all_lpipss)}')
+        print(f'Spearman statistics for rotation: {scipy.stats.spearmanr(rvs, all_lpipss)}')
+        print(f'Pearson statistics for translation: {scipy.stats.pearsonr(tvs, all_lpipss)}')
+        print(f'Pearson statistics for rotation: {scipy.stats.pearsonr(rvs, all_lpipss)}')
+        plt.scatter(rvs, all_lpipss, label=model_mapping[model])
     plt.legend()
-    plt.xlabel('Log Translation Velocity')
-    plt.ylabel('Log PSNR')
+    plt.xlabel('Log Rotational Velocity')
+    plt.ylabel('LPIPS')
     plt.show()
 
-    # plt.hist(tvs)
-    # plt.show()
-    # plt.hist(all_psnrs)
-    # plt.show()
-
-    print(scipy.stats.pearsonr(tvs, all_psnrs))
-
-    
-    # fig = plt.figure()
-    # ax = fig.add_subplot(projection='3d')
-
-    # ax.scatter(tvs, rvs, all_psnrs, s=20)
-
-    # ax.set_xlabel('TVS')
-    # ax.set_ylabel('RVS')
-    # ax.set_zlabel('PSNR')
-
-    # plt.show()
 
 if __name__ == '__main__':
     main()

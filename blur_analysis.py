@@ -92,7 +92,7 @@ def main():
                 blur_scores = scene_blurs[scene]
 
                 psnrs, ssims, lpipss = evaluate(source_path, gt_path, renders_path, task_specific_mask)
-                psnrs = normalize(psnrs, make_log=False)
+                psnrs = normalize(lpipss, make_log=False)
                 blur_scores = normalize(blur_scores, make_log=False)
                 all_blurs.extend(blur_scores)
                 all_psnrs.extend(psnrs)
