@@ -68,14 +68,21 @@ def normalize(arr, make_log=True):
 
 def main():
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
+    model_mapping = {
+        'EgoGaussian': 'EgoGaussian',
+        'Deformable-3D-Gaussians': 'Def3DGS',
+        '4DGaussians': '4DGS',
+        '4d-gaussian-splatting': 'RTGS',
+    }
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
 
+    plt.rcParams.update({'font.size': 22})
     scene_blurs = {}
     for model in models:
         all_blurs = []
-        all_psnrs = []
+        all_lpipss = []
         for repetition in ['0', '1', '2']:
             root_path = f'retrain_output/{model}/retrain/ego_exo/random_search'
             for setting in settings[::-1]:
@@ -92,17 +99,18 @@ def main():
                 blur_scores = scene_blurs[scene]
 
                 psnrs, ssims, lpipss = evaluate(source_path, gt_path, renders_path, task_specific_mask)
-                psnrs = normalize(lpipss, make_log=False)
+                lpipss = normalize(lpipss, make_log=False)
                 blur_scores = normalize(blur_scores, make_log=False)
                 all_blurs.extend(blur_scores)
-                all_psnrs.extend(psnrs)
-        plt.scatter(all_blurs, all_psnrs, label=model)
+                all_lpipss.extend(lpipss)
+        print(f'Spearman statistics for blur: {scipy.stats.spearmanr(all_blurs, all_lpipss)}')
+        print(f'Pearson statistics for blur: {scipy.stats.pearsonr(all_blurs, all_lpipss)}')
+        plt.scatter(all_blurs, all_lpipss, label=model_mapping[model])
     plt.legend()
     plt.xlabel('Blurriness')
-    plt.ylabel('PSNR')
+    plt.ylabel('LPIPS')
     plt.show()
     
-    print(scipy.stats.pearsonr(all_blurs, all_psnrs))
 
 if __name__ == '__main__':
     main()
