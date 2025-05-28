@@ -6,3 +6,5 @@ __pycache__
 random_search_output
 retrain_output
 vis_output
+scatter_csvs
+trend_csvs

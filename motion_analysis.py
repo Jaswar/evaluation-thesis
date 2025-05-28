@@ -102,7 +102,7 @@ def normalize(arr, make_log=True):
     return (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
 
 def main():
-    linear = True
+    linear = False  # True for translational velocity, False for rotational/angular
     models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting', 'EgoGaussian']
     model_mapping = {
         'EgoGaussian': 'EgoGaussian',
@@ -116,7 +116,12 @@ def main():
     
     bin_size = 0.05
     plt.rcParams.update({'font.size': 22})
-    resulting_csv = 'velocity,lpips,method\n'
+    scatter_csvs = {}
+    for model in models:
+        scatter_csvs[model] = 'velocity,lpips\n'
+    trend_csvs = {}
+    for model in models:
+        trend_csvs[model] = 'velocity,lpips\n'
     for model in models:
         all_velocities = []
         all_lpipss = []
@@ -158,10 +163,15 @@ def main():
                     all_velocities.extend(rv)
                 all_lpipss.extend(lpipss)
         for v, l in zip(all_velocities, all_lpipss):
+            # do the binning/histogram
             b = v // bin_size + 1
             if b not in bins:
                 bins[b] = []
             bins[b].append(l)
+
+            # add each entry to the .csv file
+            scatter_csvs[model] += f'{v},{l}\n'
+
         all_velocities = np.array(all_velocities)
         all_lpipss = np.array(all_lpipss)
         # np.random.shuffle(all_lpipss)
@@ -173,6 +183,8 @@ def main():
         xs = [b[0] * bin_size for b in bins]
         ys = [b[1] for b in bins]
         plt.plot(xs, ys, label=model_mapping[model], linewidth=5, linestyle='dashed')
+        for v, l in zip(xs, ys):
+            trend_csvs[model] += f'{v},{l}\n'
     plt.legend()
     if linear:
         plt.xlabel('Log Linear Velocity')
@@ -181,6 +193,13 @@ def main():
     plt.ylabel('LPIPS')
     plt.show()
 
+    for model in models:
+        filename = f'linear_scatter_data_{model_mapping[model]}.csv' if linear else f'angular_scatter_data_{model_mapping[model]}.csv'
+        with open(os.path.join('scatter_csvs', filename), 'w') as f:
+            f.write(scatter_csvs[model])
+        filename = f'linear_trend_data_{model_mapping[model]}.csv' if linear else f'angular_trend_data_{model_mapping[model]}.csv'
+        with open(os.path.join('trend_csvs', filename), 'w') as f:
+            f.write(trend_csvs[model])
 
 if __name__ == '__main__':
     main()
