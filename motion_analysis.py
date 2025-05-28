@@ -102,7 +102,8 @@ def normalize(arr, make_log=True):
     return (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
 
 def main():
-    models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
+    linear = True
+    models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting', 'EgoGaussian']
     model_mapping = {
         'EgoGaussian': 'EgoGaussian',
         'Deformable-3D-Gaussians': 'Def3DGS',
@@ -112,12 +113,14 @@ def main():
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)
-
+    
+    bin_size = 0.05
     plt.rcParams.update({'font.size': 22})
+    resulting_csv = 'velocity,lpips,method\n'
     for model in models:
-        rvs = []
-        tvs = []
+        all_velocities = []
         all_lpipss = []
+        bins = {}
         for repetition in ['0', '1', '2']:
             root_path = f'retrain_output/{model}/retrain/ego_exo/random_search'
             for setting in settings[::-1]:
@@ -149,20 +152,32 @@ def main():
                 # plt.legend()
                 # plt.show()
                 #plt.scatter(tv, psnrs, label=scene)
-                rvs.extend(rv)
-                tvs.extend(tv)
+                if linear:
+                    all_velocities.extend(tv)
+                else:
+                    all_velocities.extend(rv)
                 all_lpipss.extend(lpipss)
-        rvs = np.array(rvs)
-        tvs = np.array(tvs)
+        for v, l in zip(all_velocities, all_lpipss):
+            b = v // bin_size + 1
+            if b not in bins:
+                bins[b] = []
+            bins[b].append(l)
+        all_velocities = np.array(all_velocities)
         all_lpipss = np.array(all_lpipss)
         # np.random.shuffle(all_lpipss)
-        print(f'Spearman statistics for translation: {scipy.stats.spearmanr(tvs, all_lpipss)}')
-        print(f'Spearman statistics for rotation: {scipy.stats.spearmanr(rvs, all_lpipss)}')
-        print(f'Pearson statistics for translation: {scipy.stats.pearsonr(tvs, all_lpipss)}')
-        print(f'Pearson statistics for rotation: {scipy.stats.pearsonr(rvs, all_lpipss)}')
-        plt.scatter(tvs, all_lpipss, label=model_mapping[model])
+        print(f'Spearman statistics: {scipy.stats.spearmanr(all_velocities, all_lpipss)}')
+        print(f'Pearson statistics for translation: {scipy.stats.pearsonr(all_velocities, all_lpipss)}')
+        plt.scatter(all_velocities, all_lpipss, label=model_mapping[model], s=10)
+        bins = list(sorted(bins.items(), key=lambda x: x[0]))
+        bins = [(b[0], np.mean(b[1])) for b in bins]
+        xs = [b[0] * bin_size for b in bins]
+        ys = [b[1] for b in bins]
+        plt.plot(xs, ys, label=model_mapping[model], linewidth=5, linestyle='dashed')
     plt.legend()
-    plt.xlabel('Log Transational Velocity')
+    if linear:
+        plt.xlabel('Log Linear Velocity')
+    else:
+        plt.xlabel('Log Angular Velocity')
     plt.ylabel('LPIPS')
     plt.show()
 
