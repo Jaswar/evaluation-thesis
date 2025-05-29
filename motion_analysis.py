@@ -96,6 +96,15 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
     return psnrs, ssims, lpipss
 
 
+def get_baseline(ts):
+    max_dist = 0
+    for t1 in ts:
+        for t2 in ts:
+            dist = (t1[0] - t2[0]) ** 2 + (t1[1] - t2[1]) ** 2 + (t1[2] - t2[2]) ** 2
+            max_dist = max(max_dist, dist)
+    return max_dist
+
+
 def normalize(arr, make_log=True):
     if make_log:
         arr = np.log(arr)
@@ -126,6 +135,8 @@ def main():
         all_velocities = []
         all_lpipss = []
         bins = {}
+        baselines = []
+        mean_lpipss = []
         for repetition in ['0', '1', '2']:
             root_path = f'retrain_output/{model}/retrain/ego_exo/random_search'
             for setting in settings[::-1]:
@@ -144,11 +155,14 @@ def main():
                 tv = get_velocities(ts, linear=True)[2::4]
                 tv = np.abs(tv)
                 tv = normalize(tv)
+                baseline = get_baseline(ts)
+                baselines.append(baseline)
                 # plot_velocities(rv, tv)
 
                 rv = np.max(rv, axis=1)
                 tv = np.max(tv, axis=1)
                 psnrs, ssims, lpipss = evaluate(source_path, gt_path, renders_path, task_specific_mask)
+                mean_lpipss.append(np.mean(lpipss))
                 lpipss = normalize(lpipss, make_log=False)
                 # rv = rv[2::4]
                 # tv = tv[2::4]
@@ -162,6 +176,8 @@ def main():
                 else:
                     all_velocities.extend(rv)
                 all_lpipss.extend(lpipss)
+        # baselines = np.log(np.array(baselines))
+        plt.scatter(baselines, mean_lpipss, label=model_mapping[model])
         for v, l in zip(all_velocities, all_lpipss):
             # do the binning/histogram
             b = v // bin_size + 1
@@ -174,23 +190,30 @@ def main():
 
         all_velocities = np.array(all_velocities)
         all_lpipss = np.array(all_lpipss)
+        baselines = np.array(baselines)
+        mean_lpipss = np.array(mean_lpipss)
         # np.random.shuffle(all_lpipss)
-        print(f'Spearman statistics: {scipy.stats.spearmanr(all_velocities, all_lpipss)}')
-        print(f'Pearson statistics for translation: {scipy.stats.pearsonr(all_velocities, all_lpipss)}')
-        plt.scatter(all_velocities, all_lpipss, label=model_mapping[model], s=10)
+        print(f'Spearman statistics for velocity: {scipy.stats.spearmanr(all_velocities, all_lpipss)}')
+        print(f'Pearson statistics for velocity: {scipy.stats.pearsonr(all_velocities, all_lpipss)}')
+        print(f'Spearman statistics for baseline: {scipy.stats.spearmanr(baselines, mean_lpipss)}')
+        print(f'Pearson statistics for baseline: {scipy.stats.pearsonr(baselines, mean_lpipss)}')
+        # plt.scatter(all_velocities, all_lpipss, label=model_mapping[model], s=10)
         bins = list(sorted(bins.items(), key=lambda x: x[0]))
         bins = [(b[0], np.mean(b[1])) for b in bins]
         xs = [b[0] * bin_size for b in bins]
         ys = [b[1] for b in bins]
-        plt.plot(xs, ys, label=model_mapping[model], linewidth=5, linestyle='dashed')
+        # plt.plot(xs, ys, label=model_mapping[model], linewidth=5, linestyle='dashed')
         for v, l in zip(xs, ys):
             trend_csvs[model] += f'{v},{l}\n'
+    # plt.legend()
+    # if linear:
+    #     plt.xlabel('Log Linear Velocity')
+    # else:
+    #     plt.xlabel('Log Angular Velocity')
+    # plt.ylabel('LPIPS')
+    # plt.show()
+
     plt.legend()
-    if linear:
-        plt.xlabel('Log Linear Velocity')
-    else:
-        plt.xlabel('Log Angular Velocity')
-    plt.ylabel('LPIPS')
     plt.show()
 
     for model in models:
