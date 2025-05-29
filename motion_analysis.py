@@ -8,6 +8,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import cv2 as cv
 import scipy
+from sklearn.linear_model import LinearRegression
 
 
 # from https://mariogc.com/post/angular-velocity-quaternions/#example
@@ -177,7 +178,6 @@ def main():
                     all_velocities.extend(rv)
                 all_lpipss.extend(lpipss)
         # baselines = np.log(np.array(baselines))
-        plt.scatter(baselines, mean_lpipss, label=model_mapping[model])
         for v, l in zip(all_velocities, all_lpipss):
             # do the binning/histogram
             b = v // bin_size + 1
@@ -192,7 +192,16 @@ def main():
         all_lpipss = np.array(all_lpipss)
         baselines = np.array(baselines)
         mean_lpipss = np.array(mean_lpipss)
+        X = baselines.reshape(-1, 1)
+        y = mean_lpipss.reshape(-1, 1)
+        reg = LinearRegression().fit(X, y)
+        plt.scatter(baselines, mean_lpipss, label=model_mapping[model])
+        endpoints = np.array([[np.min(baselines)], [np.max(baselines)]])
+        preds = reg.predict(endpoints)
+        plt.plot(endpoints.reshape(-1), preds.reshape(-1), linestyle='dashed', label=model_mapping[model])
+
         # np.random.shuffle(all_lpipss)
+        # np.random.shuffle(mean_lpipss)
         print(f'Spearman statistics for velocity: {scipy.stats.spearmanr(all_velocities, all_lpipss)}')
         print(f'Pearson statistics for velocity: {scipy.stats.pearsonr(all_velocities, all_lpipss)}')
         print(f'Spearman statistics for baseline: {scipy.stats.spearmanr(baselines, mean_lpipss)}')
