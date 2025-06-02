@@ -10,6 +10,13 @@ import cv2 as cv
 import scipy
 from sklearn.linear_model import LinearRegression
 
+def to_latex_scientific(val):
+    if isinstance(val, (int, float)):
+        s = f"{val:.1e}"
+        base, exp = s.split('e')
+        exp = int(exp)
+        return f"${base} \\cdot 10^{{{exp}}}$"
+    return str(val)
 
 # from https://mariogc.com/post/angular-velocity-quaternions/#example
 def angular_velocity(q1, q2, dt=1/30.):
@@ -97,12 +104,29 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
     return psnrs, ssims, lpipss
 
 
-def get_baseline(ts):
+def get_linear_baseline(ts):
     max_dist = 0
     for t1 in ts:
         for t2 in ts:
             dist = (t1[0] - t2[0]) ** 2 + (t1[1] - t2[1]) ** 2 + (t1[2] - t2[2]) ** 2
             max_dist = max(max_dist, dist)
+    return max_dist
+
+def quaternion_diff(q1, q2):
+    q1 = np.array(q1)
+    q2 = np.array(q2)
+    q1 = q1 / np.linalg.norm(q1)
+    q2 = q2 / np.linalg.norm(q2)
+    dot_product = np.abs(np.dot(q1, q2))
+    dot_product = np.clip(dot_product, -1.0, 1.0)  # for numerical stability
+    return 2 * np.arccos(dot_product)
+
+def get_angular_baseline(qs):
+    max_dist = 0
+    for q1 in qs:
+        for q2 in qs:
+            angle = quaternion_diff(q1, q2)
+            max_dist = max(max_dist, angle)
     return max_dist
 
 
@@ -112,7 +136,7 @@ def normalize(arr, make_log=True):
     return (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
 
 def main():
-    linear = False  # True for translational velocity, False for rotational/angular
+    linear = True  # True for translational velocity, False for rotational/angular
     models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting', 'EgoGaussian']
     model_mapping = {
         'EgoGaussian': 'EgoGaussian',
@@ -132,6 +156,12 @@ def main():
     trend_csvs = {}
     for model in models:
         trend_csvs[model] = 'velocity,lpips\n'
+    baseline_csvs = {}
+    for model in models:
+        baseline_csvs[model] = 'baseline,lpips\n'
+    baseline_linear_csvs = {}
+    for model in models:
+        baseline_linear_csvs[model] = 'baseline,lpips\n'
     for model in models:
         all_velocities = []
         all_lpipss = []
@@ -150,19 +180,23 @@ def main():
                 task_specific_mask = get_mask_type_based_on_data_type('static', scene_type)
 
                 qs, ts = get_extr(source_path)  
+                if linear:
+                    baseline = get_linear_baseline(ts)
+                else:
+                    baseline = get_angular_baseline(qs)
+                baselines.append(baseline)
                 rv = get_velocities(qs, linear=False)[2::4]  # start at 2, because v_2 represents the velocity between frames 2 and 3
                 rv = np.abs(rv)
                 rv = normalize(rv)
                 tv = get_velocities(ts, linear=True)[2::4]
                 tv = np.abs(tv)
                 tv = normalize(tv)
-                baseline = get_baseline(ts)
-                baselines.append(baseline)
                 # plot_velocities(rv, tv)
 
                 rv = np.max(rv, axis=1)
                 tv = np.max(tv, axis=1)
                 psnrs, ssims, lpipss = evaluate(source_path, gt_path, renders_path, task_specific_mask)
+                lpipss = psnrs
                 mean_lpipss.append(np.mean(lpipss))
                 lpipss = normalize(lpipss, make_log=False)
                 # rv = rv[2::4]
@@ -177,7 +211,6 @@ def main():
                 else:
                     all_velocities.extend(rv)
                 all_lpipss.extend(lpipss)
-        # baselines = np.log(np.array(baselines))
         for v, l in zip(all_velocities, all_lpipss):
             # do the binning/histogram
             b = v // bin_size + 1
@@ -192,6 +225,10 @@ def main():
         all_lpipss = np.array(all_lpipss)
         baselines = np.array(baselines)
         mean_lpipss = np.array(mean_lpipss)
+        # baselines = np.log(baselines)
+        # np.random.shuffle(all_lpipss)
+        # np.random.shuffle(mean_lpipss)
+
         X = baselines.reshape(-1, 1)
         y = mean_lpipss.reshape(-1, 1)
         reg = LinearRegression().fit(X, y)
@@ -199,13 +236,19 @@ def main():
         endpoints = np.array([[np.min(baselines)], [np.max(baselines)]])
         preds = reg.predict(endpoints)
         plt.plot(endpoints.reshape(-1), preds.reshape(-1), linestyle='dashed', label=model_mapping[model])
+        print(f'Linear regression output: {endpoints=}, {preds=}')
+        baseline_linear_csvs[model] += f'{endpoints[0][0]},{preds[0][0]}\n'
+        baseline_linear_csvs[model] += f'{endpoints[1][0]},{preds[1][0]}\n'
 
-        # np.random.shuffle(all_lpipss)
-        # np.random.shuffle(mean_lpipss)
-        print(f'Spearman statistics for velocity: {scipy.stats.spearmanr(all_velocities, all_lpipss)}')
-        print(f'Pearson statistics for velocity: {scipy.stats.pearsonr(all_velocities, all_lpipss)}')
-        print(f'Spearman statistics for baseline: {scipy.stats.spearmanr(baselines, mean_lpipss)}')
-        print(f'Pearson statistics for baseline: {scipy.stats.pearsonr(baselines, mean_lpipss)}')
+        pearson_vel = scipy.stats.pearsonr(all_velocities, all_lpipss)
+        spearman_vel = scipy.stats.spearmanr(all_velocities, all_lpipss)
+        print(f'Pearson statistics for velocity: ${round(float(pearson_vel.statistic), 2)}$, {to_latex_scientific(float(pearson_vel.pvalue))}')
+        print(f'Spearman statistics for velocity: ${round(float(spearman_vel.statistic), 2)}$, {to_latex_scientific(float(spearman_vel.pvalue))}')
+
+        pearson_baseline = scipy.stats.pearsonr(baselines, mean_lpipss)
+        spearman_baseline = scipy.stats.spearmanr(baselines, mean_lpipss)
+        print(f'Pearson statistics for baseline: ${round(float(pearson_baseline.statistic), 2)}$, {to_latex_scientific(float(pearson_baseline.pvalue))}')
+        print(f'Spearman statistics for baseline: ${round(float(spearman_baseline.statistic), 2)}$, {to_latex_scientific(float(spearman_baseline.pvalue))}')
         # plt.scatter(all_velocities, all_lpipss, label=model_mapping[model], s=10)
         bins = list(sorted(bins.items(), key=lambda x: x[0]))
         bins = [(b[0], np.mean(b[1])) for b in bins]
@@ -214,6 +257,8 @@ def main():
         # plt.plot(xs, ys, label=model_mapping[model], linewidth=5, linestyle='dashed')
         for v, l in zip(xs, ys):
             trend_csvs[model] += f'{v},{l}\n'
+        for b, l in zip(baselines, mean_lpipss):
+            baseline_csvs[model] += f'{b},{l}\n'
     # plt.legend()
     # if linear:
     #     plt.xlabel('Log Linear Velocity')
@@ -226,12 +271,21 @@ def main():
     plt.show()
 
     for model in models:
+        # velocity scatter plot and trend line
         filename = f'linear_scatter_data_{model_mapping[model]}.csv' if linear else f'angular_scatter_data_{model_mapping[model]}.csv'
         with open(os.path.join('scatter_csvs', filename), 'w') as f:
             f.write(scatter_csvs[model])
         filename = f'linear_trend_data_{model_mapping[model]}.csv' if linear else f'angular_trend_data_{model_mapping[model]}.csv'
         with open(os.path.join('trend_csvs', filename), 'w') as f:
             f.write(trend_csvs[model])
+        # camera baseline data
+        filename = f'linear_baseline_data_{model_mapping[model]}.csv' if linear else f'angular_baseline_data_{model_mapping[model]}.csv'
+        with open(os.path.join('baseline_csvs', filename), 'w') as f:
+            f.write(baseline_csvs[model])
+        # camera baseline linear model
+        filename = f'linear_baseline_linear_data_{model_mapping[model]}.csv' if linear else f'angular_baseline_linear_data_{model_mapping[model]}.csv'
+        with open(os.path.join('baseline_linear_csvs', filename), 'w') as f:
+            f.write(baseline_linear_csvs[model])
 
 if __name__ == '__main__':
     main()

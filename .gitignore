@@ -8,3 +8,5 @@ retrain_output
 vis_output
 scatter_csvs
 trend_csvs
+baseline_csvs
+baseline_linear_csvs
