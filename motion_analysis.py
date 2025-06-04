@@ -196,7 +196,7 @@ def main():
                 rv = np.max(rv, axis=1)
                 tv = np.max(tv, axis=1)
                 psnrs, ssims, lpipss = evaluate(source_path, gt_path, renders_path, task_specific_mask)
-                lpipss = psnrs
+                # lpipss = ssims
                 mean_lpipss.append(np.mean(lpipss))
                 lpipss = normalize(lpipss, make_log=False)
                 # rv = rv[2::4]
@@ -242,13 +242,13 @@ def main():
 
         pearson_vel = scipy.stats.pearsonr(all_velocities, all_lpipss)
         spearman_vel = scipy.stats.spearmanr(all_velocities, all_lpipss)
-        print(f'Pearson statistics for velocity: ${round(float(pearson_vel.statistic), 2)}$, {to_latex_scientific(float(pearson_vel.pvalue))}')
-        print(f'Spearman statistics for velocity: ${round(float(spearman_vel.statistic), 2)}$, {to_latex_scientific(float(spearman_vel.pvalue))}')
+        print(f'Pearson statistics for velocity: ${round(float(pearson_vel.statistic), 2):.2f}$, {to_latex_scientific(float(pearson_vel.pvalue))}')
+        print(f'Spearman statistics for velocity: ${round(float(spearman_vel.statistic), 2):.2f}$, {to_latex_scientific(float(spearman_vel.pvalue))}')
 
         pearson_baseline = scipy.stats.pearsonr(baselines, mean_lpipss)
         spearman_baseline = scipy.stats.spearmanr(baselines, mean_lpipss)
-        print(f'Pearson statistics for baseline: ${round(float(pearson_baseline.statistic), 2)}$, {to_latex_scientific(float(pearson_baseline.pvalue))}')
-        print(f'Spearman statistics for baseline: ${round(float(spearman_baseline.statistic), 2)}$, {to_latex_scientific(float(spearman_baseline.pvalue))}')
+        print(f'Pearson statistics for baseline: ${round(float(pearson_baseline.statistic), 2):.2f}$, {to_latex_scientific(float(pearson_baseline.pvalue))}')
+        print(f'Spearman statistics for baseline: ${round(float(spearman_baseline.statistic), 2):.2f}$, {to_latex_scientific(float(spearman_baseline.pvalue))}')
         # plt.scatter(all_velocities, all_lpipss, label=model_mapping[model], s=10)
         bins = list(sorted(bins.items(), key=lambda x: x[0]))
         bins = [(b[0], np.mean(b[1])) for b in bins]
