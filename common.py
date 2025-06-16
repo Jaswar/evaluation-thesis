@@ -9,8 +9,7 @@ from math import exp
 from torch import Tensor
 from lpips import LPIPS
 
-# Copyright 2020 by Gongfan Fang, Zhejiang University.
-# All rights reserved.
+# SSIM implementation based on: https://github.com/VainF/pytorch-msssim/blob/master/pytorch_msssim/ssim.py
 import warnings
 from typing import List, Optional, Tuple, Union
 

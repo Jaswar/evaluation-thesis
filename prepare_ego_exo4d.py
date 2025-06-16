@@ -328,7 +328,10 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, start_frame, end_
     storePly(os.path.join(out_path, camera_label, seq_name, 'points.ply'), points)
 
     # ordering = [(i % (num_cams * 2)) // 2 for i in range(len(all_frames[0]))]
-    ordering = np.random.randint(0, len(names), end_frame - start_frame)
+    ordering = np.random.randint(1, len(names), end_frame - start_frame)
+    for i in range(len(ordering)):
+        if i % 2 == 1:
+            ordering[i] = 0
     with open(os.path.join(out_path, camera_label, seq_name, 'ordering.txt'), 'w') as f:
         for i in ordering:
             f.write(f'{names[i]}\n')
@@ -356,13 +359,15 @@ def main(root_path, seq_name, out_path, camera_label, start_time, end_time, targ
 if __name__ == '__main__':
     root_path = 'ego_exo_4d'
     json_file_name = 'settings.json'
-    out_path = 'output/all_saves'
+    out_path = 'output/tmp'
     with open(json_file_name, 'r') as f:
         settings = json.load(f)
     for seq in settings:
         np.random.seed(42)
         random.seed(42)
         seq_name = seq['take_name']
+        if seq_name != 'iiith_cooking_58_2':
+            continue
         start_time = seq['start_time']
         end_time = seq['end_time']
         camera_label = 'camera-rgb'  # gopro for GoPro, camera-rgb for Aria
