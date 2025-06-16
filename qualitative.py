@@ -49,7 +49,13 @@ def get_masks(source_path, frame_idx):
     with open(os.path.join(source_path, 'ordering.txt'), 'r') as f:
         ordering = f.read().split('\n')
     ordering = [o for o in ordering if o != '']
-    return get_full_masks(source_path, ordering)[frame_idx * 4 + 3], get_dynamic_masks(source_path, ordering)[frame_idx * 4 + 3]
+    full_masks = get_full_masks(source_path, ordering)
+    dynamic_masks = get_dynamic_masks(source_path, ordering)
+
+    # for i, mask in enumerate(dynamic_masks):
+    #     cv.imwrite(f'vis_output/dynamic_masks/{i:05d}.png', mask * 255)
+    
+    return full_masks[frame_idx * 4 + 3], dynamic_masks[frame_idx * 4 + 3]
 
 def obj_is_dynamic(inx, ranges):
     for r in ranges:
@@ -104,10 +110,10 @@ if __name__ == '__main__':
     # scene = 'unc_basketball_03-31-23_01_17'
     # repetition = 0
     # frame_idx = 1
-    models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    scene = 'minnesota_rockclimbing_013_2'
-    repetition = 0
-    frame_idx = 1
+    models = ['Deformable-3D-Gaussians']
+    # scene = 'minnesota_rockclimbing_013_2'
+    # repetition = 0
+    # frame_idx = 1
     # models = ['Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
     # scene = 'iiith_cooking_58_2'
     # repetition = 0
@@ -120,6 +126,11 @@ if __name__ == '__main__':
     # scene = 'iiith_cooking_111_2'
     # repetition = 0
     # frame_idx = 17
+
+    scene = 'indiana_bike_02_3'
+    frame_idx = 67
+    repetition = 0
+
     out_path = 'vis_output'
 
     with open('settings.json', 'r') as f:
