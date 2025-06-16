@@ -19,7 +19,7 @@ For information on how to setup the models, please refer to the corresponding re
 
 ## Data
 
-The dynamic masks can be downloaded from [https://drive.google.com/drive/folders/1L7IHNWNZIseZ7K1Jagdp2EyK0z6UncVR?usp=sharing](Google Drive).
+The dynamic masks can be downloaded from [Google Drive](https://drive.google.com/drive/folders/1L7IHNWNZIseZ7K1Jagdp2EyK0z6UncVR?usp=sharing).
 
 As per the licence of EgoExo4D, no part of the dataset is shared as part of this project. The takes as outlined in `settings.json` need to be downloaded from EgoExo4D directly. The script `prepare_ego_exo4d.py` must then be run to convert the data into expected format. Make sure to process the data inside the folder containing dynamic masks. 
  
