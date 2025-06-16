@@ -1,5 +1,14 @@
-# file from 3DGS: https://github.com/graphdeco-inria/gaussian-splatting
-# all credit goes to the original authors
+# file originally from 3DGS
+#
+# Copyright (C) 2023, Inria
+# GRAPHDECO research group, https://team.inria.fr/graphdeco
+# All rights reserved.
+#
+# This software is free for non-commercial, research and evaluation use 
+# under the terms of the LICENSE.md file.
+#
+# For inquiries contact  george.drettakis@inria.fr
+#
 
 import numpy as np
 import collections
