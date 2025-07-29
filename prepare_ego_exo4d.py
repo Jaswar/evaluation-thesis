@@ -366,8 +366,6 @@ if __name__ == '__main__':
         np.random.seed(42)
         random.seed(42)
         seq_name = seq['take_name']
-        if seq_name != 'iiith_cooking_58_2':
-            continue
         start_time = seq['start_time']
         end_time = seq['end_time']
         camera_label = 'camera-rgb'  # gopro for GoPro, camera-rgb for Aria
