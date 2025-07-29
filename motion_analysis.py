@@ -184,6 +184,7 @@ def main():
                     baseline = get_linear_baseline(ts)
                 else:
                     baseline = get_angular_baseline(qs)
+                baseline = np.log(baseline)
                 baselines.append(baseline)
                 rv = get_velocities(qs, linear=False)[2::4]  # start at 2, because v_2 represents the velocity between frames 2 and 3
                 rv = np.abs(rv)
@@ -205,12 +206,13 @@ def main():
                 # plt.plot(psnrs, label='PSNR')
                 # plt.legend()
                 # plt.show()
-                #plt.scatter(tv, psnrs, label=scene)
+                # plt.scatter(tv, psnrs, label=scene)
                 if linear:
                     all_velocities.extend(tv)
                 else:
                     all_velocities.extend(rv)
                 all_lpipss.extend(lpipss)
+        np.random.shuffle(all_velocities)
         for v, l in zip(all_velocities, all_lpipss):
             # do the binning/histogram
             b = v // bin_size + 1
@@ -232,10 +234,10 @@ def main():
         X = baselines.reshape(-1, 1)
         y = mean_lpipss.reshape(-1, 1)
         reg = LinearRegression().fit(X, y)
-        plt.scatter(baselines, mean_lpipss, label=model_mapping[model])
+        # plt.scatter(baselines, mean_lpipss, label=model_mapping[model])
         endpoints = np.array([[np.min(baselines)], [np.max(baselines)]])
         preds = reg.predict(endpoints)
-        plt.plot(endpoints.reshape(-1), preds.reshape(-1), linestyle='dashed', label=model_mapping[model])
+        # plt.plot(endpoints.reshape(-1), preds.reshape(-1), linestyle='dashed', label=model_mapping[model])
         print(f'Linear regression output: {endpoints=}, {preds=}')
         baseline_linear_csvs[model] += f'{endpoints[0][0]},{preds[0][0]}\n'
         baseline_linear_csvs[model] += f'{endpoints[1][0]},{preds[1][0]}\n'
@@ -249,26 +251,31 @@ def main():
         spearman_baseline = scipy.stats.spearmanr(baselines, mean_lpipss)
         print(f'Pearson statistics for baseline: ${round(float(pearson_baseline.statistic), 2):.2f}$, {to_latex_scientific(float(pearson_baseline.pvalue))}')
         print(f'Spearman statistics for baseline: ${round(float(spearman_baseline.statistic), 2):.2f}$, {to_latex_scientific(float(spearman_baseline.pvalue))}')
-        # plt.scatter(all_velocities, all_lpipss, label=model_mapping[model], s=10)
+        plt.scatter(all_velocities, all_lpipss, label=model_mapping[model], s=10)
         bins = list(sorted(bins.items(), key=lambda x: x[0]))
         bins = [(b[0], np.mean(b[1])) for b in bins]
         xs = [b[0] * bin_size for b in bins]
         ys = [b[1] for b in bins]
-        # plt.plot(xs, ys, label=model_mapping[model], linewidth=5, linestyle='dashed')
+        plt.plot(xs, ys, label=model_mapping[model], linewidth=5, linestyle='dashed')
         for v, l in zip(xs, ys):
             trend_csvs[model] += f'{v},{l}\n'
         for b, l in zip(baselines, mean_lpipss):
             baseline_csvs[model] += f'{b},{l}\n'
+    plt.legend()
+    if linear:
+        plt.xlabel('Log Linear Velocity')
+    else:
+        plt.xlabel('Log Angular Velocity')
+    plt.ylabel('LPIPS')
+    plt.show()
+
     # plt.legend()
     # if linear:
-    #     plt.xlabel('Log Linear Velocity')
+    #     plt.xlabel('Linear Baseline')
     # else:
-    #     plt.xlabel('Log Angular Velocity')
-    # plt.ylabel('LPIPS')
+    #     plt.xlabel('Angular Baseline')
+    # plt.ylabel('Mean LPIPS')
     # plt.show()
-
-    plt.legend()
-    plt.show()
 
     for model in models:
         # velocity scatter plot and trend line

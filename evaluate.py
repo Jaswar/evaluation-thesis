@@ -23,9 +23,9 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
     masks = get_masks(source_path, mask_type)
     test_masks = masks[3::4]
 
-    gts = [cv.imread(os.path.join(gt_path, f)) for f in sorted(os.listdir(gt_path))]
+    gts = [cv.imread(os.path.join(gt_path, f)) for f in sorted(os.listdir(gt_path)) if f.endswith('.png') or f.endswith('.jpg')]
     gts = [gt / 255.0 for gt in gts]
-    renders = [cv.imread(os.path.join(renders_path, f)) for f in sorted(os.listdir(renders_path))]
+    renders = [cv.imread(os.path.join(renders_path, f)) for f in sorted(os.listdir(renders_path)) if f.endswith('.png') or f.endswith('.jpg')]
     renders = [render / 255.0 for render in renders]
 
     assert len(test_masks) == len(gts) == len(renders), f'Number of masks, gts and renders do not match: {len(test_masks)}, {len(gts)}, {len(renders)}'
@@ -59,7 +59,7 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
 if __name__ == '__main__':
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
     mask_type = 'static'
-    selected_scenes = 'eg'  # eg or non_eg
+    selected_scenes = 'non_eg'  # eg or non_eg
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)

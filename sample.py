@@ -2,7 +2,7 @@ import json
 import os
 import random
 
-def main(root_path, num_vids=5, take_length=10):
+def main(root_path, num_vids=1, take_length=10):
     with open(os.path.join(root_path, 'takes.json'), 'r') as f:
         takes = json.load(f)
     vids = random.sample(takes, num_vids)

@@ -359,7 +359,7 @@ def main(root_path, seq_name, out_path, camera_label, start_time, end_time, targ
 if __name__ == '__main__':
     root_path = 'ego_exo_4d'
     json_file_name = 'settings.json'
-    out_path = 'output/tmp'
+    out_path = 'output/all_saves'
     with open(json_file_name, 'r') as f:
         settings = json.load(f)
     for seq in settings:
