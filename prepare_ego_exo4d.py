@@ -328,10 +328,7 @@ def prepare_gopro(root_path, seq_name, out_path, camera_label, start_frame, end_
     storePly(os.path.join(out_path, camera_label, seq_name, 'points.ply'), points)
 
     # ordering = [(i % (num_cams * 2)) // 2 for i in range(len(all_frames[0]))]
-    ordering = np.random.randint(1, len(names), end_frame - start_frame)
-    for i in range(len(ordering)):
-        if i % 2 == 1:
-            ordering[i] = 0
+    ordering = np.random.randint(0, len(names), end_frame - start_frame)
     with open(os.path.join(out_path, camera_label, seq_name, 'ordering.txt'), 'w') as f:
         for i in ordering:
             f.write(f'{names[i]}\n')
