@@ -1,134 +1,20 @@
 [
     {
-        "take_name": "unc_basketball_03-31-23_01_17",
-        "type": "non_eg",
-        "start_time": 4.662912959304347,
-        "end_time": 14.662912959304347
-    },
-    {
-        "take_name": "iiith_cooking_58_2",
-        "type": "non_eg",
-        "start_time": 5.455872510610979,
-        "end_time": 15.455872510610979
-    },
-    {
-        "take_name": "georgiatech_covid_03_4",
-        "type": "non_eg",
-        "start_time": 151.7000305174558,
-        "end_time": 161.7000305174558
-    },
-    {
-        "take_name": "minnesota_rockclimbing_013_2",
-        "type": "non_eg",
-        "start_time": 56.7656455458209,
-        "end_time": 66.7656455458209
-    },
-    {
-        "take_name": "uniandes_basketball_003_43",
-        "type": "non_eg",
-        "start_time": 14.314687670746904,
-        "end_time": 24.314687670746906
-    },
-    {
-        "take_name": "utokyo_pcr_2001_31_8",
-        "type": "non_eg",
-        "start_time": 147.93029284556837,
-        "end_time": 157.93029284556837
-    },
-    {
-        "take_name": "georgiatech_bike_01_4",
-        "type": "non_eg",
-        "start_time": 32.29675191752501,
-        "end_time": 42.29675191752501
-    },
-    {
-        "take_name": "indiana_bike_02_3",
-        "type": "non_eg",
-        "start_time": 139.1854609530407,
-        "end_time": 149.1854609530407
-    },
-    {
-        "take_name": "iiith_cooking_111_2",
+        "take_name": "iiith_cooking_22_1",
         "type": "eg",
-        "start_time": 8.3333,
-        "end_time": 14.0
+        "start_time": 23.7,
+        "end_time": 27.0
     },
     {
-        "take_name": "georgiatech_cooking_08_02_4",
+        "take_name": "uniandes_cooking_003_4",
         "type": "eg",
-        "start_time": 383.0,
-        "end_time": 393.0
+        "start_time": 4.7,
+        "end_time": 12.1
     },
     {
-        "take_name": "iiith_soccer_029_2",
-        "type": "non_eg",
-        "start_time": 45.08989480986421,
-        "end_time": 55.08989480986421
-    },
-    {
-        "take_name": "minnesota_cooking_040_2",
-        "type": "non_eg",
-        "start_time": 111.33239355917874,
-        "end_time": 121.33239355917874
-    }, 
-    {
-        "take_name": "upenn_0710_Guitar_1_6",
-        "type": "non_eg",
-        "start_time": 146.2196677270776,
-        "end_time": 156.2196677270776
-    }, 
-    {
-        "take_name": "fair_bike_01_7",
-        "type": "non_eg", 
-        "start_time": 115.83747213047279,
-        "end_time": 125.83747213047279
-    }, 
-    {
-        "take_name": "unc_basketball_03-09-23_02_20",
-        "type": "non_eg",
-        "start_time": 34.15788311848194,
-        "end_time": 44.15788311848194
-    }, 
-    {
-        "take_name": "sfu_basketball013_16",
-        "type": "non_eg",
-        "start_time": 20.81802415582837,
-        "end_time": 30.81802415582837
-    }, 
-    {
-        "take_name": "uniandes_dance_022_20",
-        "type": "non_eg",
-        "start_time": 34.71408472144156,
-        "end_time": 44.71408472144156
-    }, 
-    {
-        "take_name": "sfu_cooking023_8",
-        "type": "non_eg",
-        "start_time": 5.559373342959394,
-        "end_time": 15.559373342959394
-    },
-    {
-        "take_name": "iiith_cooking_120_2",
-        "type": "non_eg",
-        "start_time": 166.94280894119447,
-        "end_time": 176.94280894119447
-    },
-    {
-        "take_name": "indiana_music_05_4",
-        "type": "non_eg",
-        "start_time": 496.8375160194219,
-        "end_time": 506.8375160194219
-    },
-    {
-        "take_name": "nus_cpr_07_2",
-        "type": "non_eg",
-        "start_time":  66.91801106811693,
-        "end_time": 76.91801106811693
-    },
-    {
-        "take_name": "iiith_cooking_24_1",
-        "type": "non_eg",
-        "start_time": 41.451337362049664,
-        "end_time": 51.451337362049664
+        "take_name": "uniandes_cooking_005_4",
+        "type": "eg",
+        "start_time": 33.2,
+        "end_time": 38.6
     }
 ]
