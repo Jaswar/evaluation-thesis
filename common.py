@@ -257,7 +257,7 @@ def combine_dynamic_masks(source_path, ordering, skip_ids):
     masks = []
     height, width = cv.imread(os.path.join(source_path, ordering[0], 'masks', '00000.png')).shape[:2]
     for i, cam_name in enumerate(ordering):
-        dynamic_mask = np.zeros((height, width), dtype=np.bool)
+        dynamic_mask = np.zeros((height, width), dtype=bool)
         for obj in dynamics:
             id_ = obj['id']
             if id_ in skip_ids:

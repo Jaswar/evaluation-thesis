@@ -58,8 +58,8 @@ def evaluate(source_path, gt_path, renders_path, mask_type):
 
 if __name__ == '__main__':
     models = ['EgoGaussian', 'Deformable-3D-Gaussians', '4DGaussians', '4d-gaussian-splatting']
-    mask_type = 'full'
-    selected_scenes = 'non_eg'  # eg or non_eg
+    mask_type = 'dynamic'
+    selected_scenes = 'eg'  # eg or non_eg
 
     with open('settings.json', 'r') as f:
         settings = json.load(f)

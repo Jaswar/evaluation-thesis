@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import cv2 as cv
 import scipy
 from sklearn.linear_model import LinearRegression
+import random
+
 
 def to_latex_scientific(val):
     if isinstance(val, (int, float)):
@@ -212,7 +214,7 @@ def main():
                 else:
                     all_velocities.extend(rv)
                 all_lpipss.extend(lpipss)
-        np.random.shuffle(all_velocities)
+        # np.random.shuffle(all_velocities)
         for v, l in zip(all_velocities, all_lpipss):
             # do the binning/histogram
             b = v // bin_size + 1
@@ -221,7 +223,8 @@ def main():
             bins[b].append(l)
 
             # add each entry to the .csv file
-            scatter_csvs[model] += f'{v},{l}\n'
+            if random.random() < 0.3:  # remove some entries or pgfplots fails due to memory limit :((
+                scatter_csvs[model] += f'{v},{l}\n'
 
         all_velocities = np.array(all_velocities)
         all_lpipss = np.array(all_lpipss)
